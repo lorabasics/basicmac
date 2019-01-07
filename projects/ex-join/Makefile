@@ -1,0 +1,21 @@
+TARGET  := b_l072z_lrwan1
+
+VARIANTS := eu868 us915
+
+CFLAGS += -Os
+CFLAGS += -g
+CFLAGS += -Wall -Wno-main
+
+SVCS	+= app
+SVCS	+= appstart
+SVCS	+= lwmux
+SVCS	+= lwtest
+
+DEFS	+= -DDEBUG_RX
+DEFS	+= -DDEBUG_TX
+
+LMICCFG	+= eeprom_keys
+LMICCFG	+= DEBUG
+LMICCFG	+= extapi
+
+include ../projects.gmk

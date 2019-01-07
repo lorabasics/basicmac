@@ -1,0 +1,144 @@
+# Copyright (C) 2016-2019 Semtech (International) AG. All rights reserved.
+#
+# This file is subject to the terms and conditions defined in file 'LICENSE',
+# which is part of this source code package.
+
+-include Makefile.local
+-include ../Makefile.local
+include ../platform.mk
+include ../variants.mk
+
+ifeq ($(TARGET),)
+    $(error "TARGET not specified (See platform.gmk for possible settings)")
+endif
+
+LMICDIR		:= ../../lmic
+TOOLSDIR	:= ../../tools
+COMMONDIR	:= ../../common
+SVCSDIR		:= ../../services
+BUILDDIR_PFX	:= build-
+
+PROJECT		?= $(notdir $(CURDIR))
+
+CFLAGS		+= $(FLAGS)
+LDFLAGS		+= $(FLAGS)
+ASFLAGS		+= $(FLAGS)
+
+DEFS		+= -DVARIANT="\"$(VARIANT)\""
+DEFS		+= -DPROJECT="\"$(PROJECT)\""
+DEFS		+= $(addprefix -DCFG_,$(LMICCFG))
+
+PDEFS		+= $(filter-out $(UNDEFS),$(DEFS))
+CFLAGS		+= $(PDEFS)
+ASDEFS		+= $(PDEFS)
+
+CFLAGS		+= -I$(LMICDIR) -I$(HALDIR)
+CFLAGS		+= -I$(COMMONDIR)
+
+PATCHFLAGS	+= $(addprefix --target=,$(HWID.$(VARIANT)))
+ifneq ($(RELEASE),)
+PATCHFLAGS	+= $(addprefix --version=,$(RELEASE))
+else
+PATCHFLAGS	+= -v
+endif
+
+SRCS		 = $(notdir $(wildcard $(LMICDIR)/*.c $(HALDIR)/*.c *.c))
+
+VPATH		+= $(LMICDIR) $(HALDIR)
+
+ifneq ($(COMMON),)
+    SRCS	+= $(COMMON)
+    VPATH	+= $(COMMONDIR)
+    DEFS	+= $(addprefix -DCOMMON_,$(basename $(notdir $(COMMON))))
+endif
+
+SVCTOOLARGS	+= -p $(SVCSDIR) -p . $(SVCS)
+SVCCHECK	:= $(shell $(SVCTOOL) check $(SVCTOOLARGS))
+ifneq ($(SVCCHECK),)
+    $(error $(SVCCHECK))
+endif
+
+SVCDEFS	 	 = $(BUILDDIR)/svcdefs.h
+ifneq ($(SVCS),)
+    VPATH	+= $(SVCSDIR)
+    SVCSRCS	:= $(shell $(SVCTOOL) sources $(SVCTOOLARGS))	# only once
+    SRCS	+= $(SVCSRCS)
+    SVC_DEPS	+= $(SVCDEFS)
+    CFLAGS	+= -I$(BUILDDIR) -I$(SVCSDIR)
+endif
+
+OBJS		 = $(filter-out $(addprefix $(BUILDDIR)/,$(OBJS_BLACKLIST)),$(patsubst %,$(BUILDDIR)/%.o,$(basename $(SRCS))))
+
+ALL		?= $(error No output targets collected for this build)
+LOAD		?= $(error No load target collected for this build)
+
+OOFLAGS		 = $(addprefix -f $(TOOLSDIR)/openocd/,$(OOCFGS))
+
+BUILDDIRS	 = $(sort $(dir $(OBJS)))
+
+MAKE_DEPS	:= $(MAKEFILE_LIST)	# before we include all the *.d files...
+
+default: variant
+
+variant: $(VTARGET)
+
+variants: $(VTARGETS)
+
+variant-%:
+	$(MAKE) -j 6 variant VARIANT=$*
+
+all: $(ALL)
+
+$(OBJS): $(MAKE_DEPS)
+
+$(OBJS): | $(BUILDDIRS) $(SVC_DEPS)
+
+$(BUILDDIR)/%.o: %.c
+	$(CC) -c $(CFLAGS) $< -o $@
+
+$(BUILDDIR)/%.o: %.s
+	$(AS) $(ASFLAGS) $< -o $@ 
+
+$(BUILDDIR)/%.o: %.S
+	$(CC) -c $(ASFLAGS) $(ASDEFS) $< -o $@
+
+$(BUILDDIR)/%.out: $(OBJS)
+	$(LD) $(LDFLAGS) $^ $(LDLIBS) -o $@
+
+$(BUILDDIR)/%.a: $(OBJS)
+	$(AR) rcs $@ $^ -o $@
+
+$(BUILDDIR)/%.hex: export STDOUT_PREFIX=$(SPACE)
+$(BUILDDIR)/%.hex: $(BUILDDIR)/%.out
+	$(HEX) $< $@
+	$(FWTOOL) patch $@
+
+$(SVCDEFS): $(MAKE_DEPS) | $(BUILDDIRS)
+	$(SVCTOOL) svcdefs -o $@ -d $(SVCTOOLARGS)
+
+clean:
+	rm -rf build/ $(BUILDDIR_PFX)*
+
+load: $(LOAD)
+
+loadhex: $(BUILDDIR)/$(PROJECT).hex
+	$(OPENOCD) $(OOFLAGS) -c "flash_ihex $<"
+
+loadbl:
+	$(OPENOCD) $(OOFLAGS) -c "flash_ihex $(BL)/build/boards/$(BL_BRD)/bootloader.hex"
+
+debug: $(BUILDDIR)/$(PROJECT).out
+	$(GDB) $< -ex 'target remote | $(OPENOCD) $(OOFLAGS) -c "gdb_port pipe;"' -ex "monitor reset halt"
+
+$(BUILDDIRS):
+	mkdir -p $@
+
+.PHONY: default all clean load loadhex loadbin loadfw loadup loadbl loadosbl debug variant variants
+
+.SECONDARY:
+
+.DELETE_ON_ERROR:
+
+-include $(OBJS:.o=.d) $(SVCDEFS:.h=.d)
+
+# vim: filetype=make

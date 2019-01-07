@@ -1,0 +1,8 @@
+ARCH	:= $(shell gcc -dumpmachine)
+
+ifeq (,$(ARCH))
+    $(error Could not determine build platform architecture)
+endif
+
+
+# vim: filetype=make

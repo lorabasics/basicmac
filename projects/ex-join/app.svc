@@ -1,0 +1,4 @@
+hook.appstart: app_main
+hook.lwm_downlink: app_dl
+
+# vim: syntax=yaml
