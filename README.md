@@ -200,3 +200,4 @@ components may still be undergoing significant changes. Some of these are:
 07-Jan-2019
 
 - Implements LoRaWAN 1.0.3; Class A; EU868, US915
+- Experimental support for Class B/C, AU915, AS923
