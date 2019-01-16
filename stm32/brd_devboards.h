@@ -9,21 +9,37 @@
 #if defined(CFG_nucleo_board)
 
 #define GPIO_RST	BRD_GPIO(PORT_A, 0)
-#define GPIO_DIO0	BRD_GPIO(PORT_A, 10)
-#define GPIO_DIO1	BRD_GPIO(PORT_B, 3)
-#define GPIO_DIO2	BRD_GPIO(PORT_B, 5)
 
 #if defined(CFG_sx1272mbed)
 #define BRD_sx1272_radio
+#define GPIO_DIO0	BRD_GPIO(PORT_A, 10)
+#define GPIO_DIO1	BRD_GPIO(PORT_B, 3)
+#define GPIO_DIO2	BRD_GPIO(PORT_B, 5)
+#define GPIO_NSS	BRD_GPIO(PORT_B, 6)
 #elif defined(CFG_sx1276mbed)
 #define BRD_sx1276_radio
+#define GPIO_DIO0	BRD_GPIO(PORT_A, 10)
+#define GPIO_DIO1	BRD_GPIO(PORT_B, 3)
+#define GPIO_DIO2	BRD_GPIO(PORT_B, 5)
+#define GPIO_NSS	BRD_GPIO(PORT_B, 6)
 #define GPIO_TX		BRD_GPIO(PORT_C, 1)
+#elif defined(CFG_sx1261mbed)
+#define BRD_sx1261_radio
+#define GPIO_DIO1	BRD_GPIO(PORT_B, 4)
+#define GPIO_BUSY	BRD_GPIO(PORT_B, 3)
+#define GPIO_NSS	BRD_GPIO(PORT_A, 8)
+#define GPIO_TXRX_EN	BRD_GPIO(PORT_A, 9)
+#elif defined(CFG_sx1262mbed)
+#define BRD_sx1262_radio
+#define GPIO_DIO1	BRD_GPIO(PORT_B, 4)
+#define GPIO_BUSY	BRD_GPIO(PORT_B, 3)
+#define GPIO_NSS	BRD_GPIO(PORT_A, 8)
+#define GPIO_TXRX_EN	BRD_GPIO(PORT_A, 9)
 #else
 #error "Missing radio configuration"
 #endif
 
 #define BRD_RADIO_SPI	1
-#define GPIO_NSS	BRD_GPIO(PORT_B, 6)
 #define GPIO_SCK	BRD_GPIO_AF(PORT_A, 5, 0)
 #define GPIO_MISO	BRD_GPIO_AF(PORT_A, 6, 0)
 #define GPIO_MOSI	BRD_GPIO_AF(PORT_A, 7, 0)
@@ -74,6 +90,7 @@
 
 #define GPIO_DBG_LED	GPIO_LED4
 #define GPIO_DBG_TX	BRD_GPIO_AF(PORT_A, 2, 4)
+#define GPIO_DBG_RX     BRD_GPIO_AF(PORT_A, 3, 4)
 #define BRD_DBG_UART	2
 
 #define BRD_USART	1

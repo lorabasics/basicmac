@@ -9,6 +9,23 @@
 #include "hw.h" // provided by HAL
 
 
+#ifdef PERIPH_EEPROM
+// ------------------------------------------------
+// EEPROM
+
+void eeprom_write (void* dest, unsigned int val);
+void eeprom_copy (void* dest, const void* src, int len);
+
+#endif
+
+#ifdef PERIPH_FLASH
+// ------------------------------------------------
+// Flash
+
+void flash_write (void* dst, const void* src, unsigned int nwords, bool erase);
+
+#endif
+
 #ifdef PERIPH_USART
 // ------------------------------------------------
 // USART
@@ -21,13 +38,10 @@ enum {
 
 typedef int (*usart_rx_func) (int ch, void* arg);
 typedef int (*usart_tx_func) (int status, void* arg);
-void usart_init (void);
 void usart_cfg (unsigned int br);
 void usart_recv (usart_rx_func rx, void* arg);
 void usart_send (usart_tx_func tx, void* arg);
 void usart_abort_recv (void);
-//int usart_wait_silence (int silence_ticks, int timeout_ticks);
-void usart_irq (void);
 
 #endif
 

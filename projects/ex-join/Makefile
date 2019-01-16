@@ -1,4 +1,6 @@
 TARGET  := b_l072z_lrwan1
+#TARGET  := nucleo_l053r8-sx1276mbed
+#TARGET  := nucleo_l053r8-sx1262mbed
 
 VARIANTS := eu868 us915
 

@@ -196,6 +196,16 @@ components may still be undergoing significant changes. Some of these are:
     addressed by the Technical Committee of the LoRa Alliance. Until these are
     rectified, Basic MAC will only support the 1.0.x series of LoRaWAN.
 
+
+### Pre-release 2
+15-Jan-2019
+
+- Restructured radio code; added support for SX1261/62 radio chipsets
+- Experimental FSK support on SX1261/62
+- DevNonce is now a counter persisted in EEPROM
+- Minor fixes
+
+
 ### Pre-release 1
 07-Jan-2019
 

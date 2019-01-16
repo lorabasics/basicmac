@@ -10,6 +10,7 @@
 static struct {
     osjob_t* scheduledjobs;
     unsigned int exact;
+    u1_t randbuf[16];
 } OS;
 
 // job flags
@@ -20,10 +21,28 @@ enum {
 void os_init (void* bootarg) {
     memset(&OS, 0x00, sizeof(OS));
     hal_init(bootarg);
+    // init prng
+    memcpy(OS.randbuf, __TIME__, 8);
+    os_getDevEui(OS.randbuf + 8);
+    OS.randbuf[0] = 16;
 #ifndef CFG_noradio
     radio_init();
 #endif
     LMIC_init();
+}
+
+// return next random byte derived from seed buffer
+// (buf[0] holds index of next byte to be returned 1-16)
+u1_t os_getRndU1 (void) {
+    u1_t i = OS.randbuf[0];
+    ASSERT(i != 0);
+    if (i == 16) {
+        os_aes(AES_ENC, OS.randbuf, 16); // encrypt seed with any key
+        i = 0;
+    }
+    u1_t v = OS.randbuf[i++];
+    OS.randbuf[0] = i;
+    return v;
 }
 
 bit_t os_cca (u2_t rps, u4_t freq) { //XXX:this belongs into os_radio module

@@ -15,6 +15,10 @@
 #include "perso.h"
 #endif
 
+#if defined(SVC_eefs)
+#include "eefs/eefs.h"
+#endif
+
 // HAL state
 static struct {
     s4_t irqlevel;
@@ -143,9 +147,15 @@ static void hal_io_init () {
 #endif
 
 #ifndef CFG_noradio
+#ifdef GPIO_DIO0
     IRQ_PIN(GPIO_DIO0, GPIO_IRQ_RISING);
+#endif
+#ifdef GPIO_DIO1
     IRQ_PIN(GPIO_DIO1, GPIO_IRQ_RISING);
+#endif
+#ifdef GPIO_DIO2
     IRQ_PIN(GPIO_DIO2, GPIO_IRQ_RISING);
+#endif
 #endif
 }
 
@@ -212,26 +222,43 @@ void hal_pin_rst (u1_t val) {
     }
 }
 
+void hal_pin_busy_wait (void) {
+#ifdef GPIO_BUSY
+    CFG_PIN(GPIO_BUSY, GPIOCFG_MODE_INP | GPIOCFG_OSPEED_40MHz);
+
+    while (GET_PIN(GPIO_BUSY) != 0);
+
+    CFG_PIN_DEFAULT(GPIO_BUSY);
+#endif
+}
+
 extern void radio_irq_handler(u1_t diomask);
 
 // generic EXTI IRQ handler for all channels
 static void EXTI_IRQHandler () {
     u1_t diomask = 0;
+#ifdef GPIO_DIO0
     // DIO 0
-    if((EXTI->PR & (1<<BRD_PIN(GPIO_DIO0))) != 0) { // pending
-        EXTI->PR = (1<<BRD_PIN(GPIO_DIO0)); // clear irq
+    if ((EXTI->PR & (1 << BRD_PIN(GPIO_DIO0))) != 0) { // pending
+        EXTI->PR = (1 << BRD_PIN(GPIO_DIO0)); // clear irq
 	diomask |= (1 << 0);
     }
+#endif
+#ifdef GPIO_DIO1
     // DIO 1
-    if((EXTI->PR & (1<<BRD_PIN(GPIO_DIO1))) != 0) { // pending
-        EXTI->PR = (1<<BRD_PIN(GPIO_DIO1)); // clear irq
+    if ((EXTI->PR & (1 << BRD_PIN(GPIO_DIO1))) != 0) { // pending
+        EXTI->PR = (1 << BRD_PIN(GPIO_DIO1)); // clear irq
 	diomask |= (1 << 1);
     }
+#endif
+#ifdef GPIO_DIO2
     // DIO 2
-    if((EXTI->PR & (1<<BRD_PIN(GPIO_DIO2))) != 0) { // pending
-        EXTI->PR = (1<<BRD_PIN(GPIO_DIO2)); // clear irq
+    if ((EXTI->PR & (1 << BRD_PIN(GPIO_DIO2))) != 0) { // pending
+        EXTI->PR = (1 << BRD_PIN(GPIO_DIO2)); // clear irq
 	diomask |= (1 << 2);
     }
+#endif
+
     if(diomask) {
         // invoke radio handler (on IRQ)
         radio_irq_handler(diomask);
@@ -260,9 +287,15 @@ static void dio_config (int mask, int pin, int gpio) {
 void hal_irqmask_set (int mask) {
     static int prevmask = 0;
 
+#ifdef GPIO_DIO0
     dio_config(mask, HAL_IRQMASK_DIO0, GPIO_DIO0);
+#endif
+#ifdef GPIO_DIO1
     dio_config(mask, HAL_IRQMASK_DIO1, GPIO_DIO1);
+#endif
+#ifdef GPIO_DIO2
     dio_config(mask, HAL_IRQMASK_DIO2, GPIO_DIO2);
+#endif
 
     mask = (mask != 0);
     if (prevmask != mask) {
@@ -1014,6 +1047,11 @@ void hal_init (void* bootarg) {
 #ifdef CFG_DEBUG
     debug_init();
 #endif
+
+#if defined(SVC_eefs)
+    eefs_init((void*) APPDATA_BASE, APPDATA_SZ);
+#endif
+
 }
 
 const irqdef HAL_irqdefs[] = {
@@ -1166,4 +1204,33 @@ void hal_reboot (void) {
     NVIC_SystemReset();
     // not reached
     hal_failed();
+}
+
+// persistent storage of stack data
+typedef struct {
+    uint32_t    dnonce[4];      // dev nonce history
+    uint32_t    jnonce[4];      // join nonce history
+} pdata;
+
+// Note: The next nonce is stored, and the writes are spread over 4 fields. At
+// 100k write cycles, this will allow 400k join requests. The DevNonce counter
+// is only 16 bits, so it will roll-over much earlier, but the counter can be
+// restarted at 0 if/when the Join EUI changes.
+
+u4_t hal_dnonce_next (void) {
+    pdata* p = (pdata*) STACKDATA_BASE;
+    int x = 0;
+    while( x < 3 && p->dnonce[x] < p->dnonce[x + 1] ) {
+        x += 1;
+    }
+    u4_t dn = p->dnonce[x];
+    eeprom_write(p->dnonce + ((x + 1) & 3), dn + 1);
+    return dn;
+}
+
+void hal_dnonce_clear (void) {
+    pdata* p = (pdata*) STACKDATA_BASE;
+    for( int i = 0; i < 4; i++) {
+        eeprom_write(p->dnonce + i, 0);
+    }
 }

@@ -10,14 +10,6 @@
 #include "sha2.h"
 #endif
 
-// EEPROM layout for STM32
-
-// 0x0000-0x003f   64 B : reserved for bootloader
-// 0x0040-0x00ff  192 B : reserved for personalization data
-// 0x0100-......        : reserved for application
-
-#define PERSODATA_BASE          (EEPROM_BASE + 0x40)
-
 #define PERSODATA_MAGIC_V1      0xb2dc4db2 /* openssl rand */
 
 typedef struct {
@@ -33,7 +25,7 @@ typedef struct {
     uint32_t    hash[8];        // 0x50 hash
 } persodata_v1;
 
-_Static_assert(sizeof(persodata_v1) <= 192, "persodata must not be larger than 192 B");
+_Static_assert(sizeof(persodata_v1) <= PERSODATA_SZ, "persodata struct too large");
 
 persodata_v1 pd;
 
@@ -103,7 +95,6 @@ u4_t hal_region (void) {
 u4_t hal_hwid (void) {
     return pd.hwid;
 }
-
 
 #ifdef CFG_eeprom_keys
 // provide device ID (8 bytes, LSBF)

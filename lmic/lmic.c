@@ -176,7 +176,7 @@ static int aes_verifyMic0 (xref2u1_t pdu, int len) {
     u1_t optneg = pdu[OFF_JA_DLSET] & JA_DLS_OPTNEG;
     if( optneg ) {
 	os_moveMem(pdu+OFF_JA_JOINNONCE+2, pdu+OFF_JA_JOINNONCE, len-OFF_JA_JOINNONCE);
-	os_wlsbf2(pdu+OFF_JA_JOINNONCE, LMIC.devNonce-1);
+	os_wlsbf2(pdu+OFF_JA_JOINNONCE, LMIC.devNonce);
 	len+=2;
     }
 #endif
@@ -2295,8 +2295,7 @@ static bit_t processJoinAccept (void) {
 #endif
     }
 
-    // already incremented when JOIN REQ got sent off
-    aes_sessKeys(LMIC.devNonce-1, &LMIC.frame[OFF_JA_JOINNONCE], LMIC.nwkKey,
+    aes_sessKeys(LMIC.devNonce, &LMIC.frame[OFF_JA_JOINNONCE], LMIC.nwkKey,
 #if defined(CFG_lorawan11)
 	    LMIC.nwkKeyDn,
 #endif
@@ -2310,7 +2309,7 @@ static bit_t processJoinAccept (void) {
                         e_.deveui  = MAIN::CDEV->getEui(),
                         e_.devaddr = LMIC.devaddr,
                         e_.oldaddr = oldaddr,
-                        e_.nonce   = LMIC.devNonce-1,
+                        e_.nonce   = LMIC.devNonce,
                         e_.mic     = mic,
                         e_.reason  = ((LMIC.opmode & OP_REJOIN) != 0
                                       ? EV::joininfo_t::REJOIN_ACCEPT
@@ -2746,6 +2745,7 @@ int LMIC_track (ostime_t when) {
 static void buildJoinRequest (u1_t ftype) {
     // Do not use pendTxData since we might have a pending
     // user level frame in there. Use RX holding area instead.
+    LMIC.devNonce = hal_dnonce_next();
     xref2u1_t d = LMIC.frame;
     d[OFF_JR_HDR] = ftype;
     os_getJoinEui(d + OFF_JR_JOINEUI);
@@ -2762,7 +2762,6 @@ static void buildJoinRequest (u1_t ftype) {
                                     ? EV::joininfo_t::REJOIN_REQUEST
                                     : EV::joininfo_t::REQUEST)));
     LMIC.dataLen = LEN_JR;
-    LMIC.devNonce++;
     DO_DEVDB(LMIC.devNonce,devNonce);
 }
 
@@ -3167,7 +3166,6 @@ void LMIC_reset (void) {
 
     os_clearMem((xref2u1_t)&LMIC,SIZEOFEXPR(LMIC));
     LMIC.devaddr      =  0;
-    LMIC.devNonce     =  os_getRndU2();
     LMIC.opmode       =  OP_NONE;
     LMIC.clmode       =  0;
     LMIC.pollcnt      =  0;

@@ -65,6 +65,7 @@ ifneq ($(SVCS),)
     SRCS	+= $(SVCSRCS)
     SVC_DEPS	+= $(SVCDEFS)
     CFLAGS	+= -I$(BUILDDIR) -I$(SVCSDIR)
+    DEFS	+= $(addprefix -DSVC_,$(SVCS))
 endif
 
 OBJS		 = $(filter-out $(addprefix $(BUILDDIR)/,$(OBJS_BLACKLIST)),$(patsubst %,$(BUILDDIR)/%.o,$(basename $(SRCS))))

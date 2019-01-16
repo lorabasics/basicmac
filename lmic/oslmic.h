@@ -8,13 +8,12 @@
 #ifndef _oslmic_h_
 #define _oslmic_h_
 
+#include "board.h"
+
 // Dependencies required for the LoRa MAC in C to run.
 // These settings can be adapted to the underlying system.
 // You should not, however, change the lmic.[hc]
 
-
-
-//================================================================================
 //================================================================================
 // Target platform as C library
 #include <stdbool.h>
@@ -88,9 +87,6 @@ extern u4_t AESKEY[];
 #define AESaux ((u1_t*)AESAUX)
 #define FUNC_ADDR(func) (&(func))
 
-u1_t radio_rand1 (void);
-#define os_getRndU1() radio_rand1()
-
 #if defined(CFG_simul)
 #define DEFINE_LMIC
 #define DECLARE_LMIC extern struct lmic_t* plmic
@@ -133,21 +129,22 @@ void LOGIT(int lvl, char* fmt, ...);
 #define LOGIT(lvl, fmt, ...) debug_printf(fmt, ## __VA_ARGS__)
 #endif
 
-void radio_init (void);
-void radio_reset (void);
-void radio_writeBuf (u1_t addr, xref2u1_t buf, u1_t len);
-void radio_readBuf (u1_t addr, xref2u1_t buf, u1_t len);
-void radio_irq_handler (u1_t dio);
 void os_init (void* bootarg);
 void os_runstep (void);
 void os_runloop (void);
+u1_t os_getRndU1 (void);
 
 //================================================================================
 
-
 #ifndef RX_RAMPUP
 #ifndef CFG_rxrampup
+#if defined(BRD_sx1261_radio) || defined(BRD_sx1262_radio)
+#define RX_RAMPUP  (us2osticks(5000))
+#elif defined(BRD_sx1272_radio) || defined(BRD_sx1276_radio)
 #define RX_RAMPUP  (us2osticks(1200))
+#else
+#define RX_RAMPUP  (0)
+#endif
 #else
 #define RX_RAMPUP  (us2osticksCeil(CFG_rxrampup))
 #endif
@@ -187,7 +184,6 @@ typedef s8_t  osxtime_t;
 #define sec2osxticks(sec) ((osxtime_t)( (s8_t)(sec) * OSTICKS_PER_SEC))
 #endif
 
-
 struct osjob_t;  // fwd decl.
 typedef void (*osjobcb_t) (struct osjob_t*);
 struct osjob_t {
@@ -201,7 +197,6 @@ struct osjob_t {
 #endif
 };
 TYPEDEF_xref2osjob_t;
-
 
 #ifndef HAS_os_calls
 
@@ -318,6 +313,19 @@ s2_t  os_fwChunk(u1_t* p, u1_t len);
 
 #endif // !HAS_os_calls
 
+// public radio functions
+void radio_irq_handler (u1_t dio); // (used by EXTI_IRQHandler)
+void radio_init (void); // (used by os_init(),
+void radio_reset (void); // (used by uft, radio_init())
+void radio_writeBuf (u1_t addr, xref2u1_t buf, u1_t len); // (used by perso)
+void radio_readBuf (u1_t addr, xref2u1_t buf, u1_t len); // (used by perso)
+
+// radio-specific functions
+void radio_irq_process (ostime_t irqtime);
+void radio_starttx (bool txcontinuous);
+void radio_startrx (bool rxcontinuous);
+void radio_sleep (void);
+
 // ======================================================================
 // AES support
 // !!Keep in sync with lorabase.hpp!!
@@ -337,7 +345,5 @@ extern xref2u1_t AESaux;
 #ifndef os_aes
 u4_t os_aes (u1_t mode, xref2u1_t buf, u2_t len);
 #endif
-
-
 
 #endif // _oslmic_h_

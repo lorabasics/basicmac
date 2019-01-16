@@ -160,12 +160,22 @@ int gpio_transition (int port, int pin, int type, int duration, unsigned int con
 #endif
 #define EEPROM_SZ	(EEPROM_END - EEPROM_BASE)
 
-// write 32-bit word to EEPROM
-void eeprom_write (u4_t* addr, u4_t val);
+// EEPROM layout for STM32
 
-// copy bytes to EEPROM (aligned, multiple of 4)
-void eeprom_copy (void* dst, const void* src, u2_t len);
+// 0x0000-0x003f   64 B : reserved for bootloader
+// 0x0040-0x005f   32 B : reserved for persistent stack data
+// 0x0060-0x00ff  160 B : reserved for personalization data
+// 0x0100-......        : reserved for application
 
+#define STACKDATA_BASE          (EEPROM_BASE + 0x0040)
+#define PERSODATA_BASE          (EEPROM_BASE + 0x0060)
+#define APPDATA_BASE            (EEPROM_BASE + 0x0100)
+
+#define STACKDATA_SZ            (PERSODATA_BASE - STACKDATA_BASE)
+#define PERSODATA_SZ            (APPDATA_BASE - PERSODATA_BASE)
+#define APPDATA_SZ              (EEPROM_END - APPDATA_BASE)
+
+#define PERIPH_EEPROM
 
 //////////////////////////////////////////////////////////////////////
 // ADC
@@ -236,8 +246,7 @@ u1_t spi_xfer (u1_t out);
 //////////////////////////////////////////////////////////////////////
 
 #define FLASH_PAGE_SZ		128
-#define ROUND_PAGE_SZ(sz)       (((sz)+127) & ~0x7F)
-#define PAGE_NW		(FLASH_PAGE_SZ >> 2)
+#define FLASH_PAGE_NW		(FLASH_PAGE_SZ >> 2)
 
 #define FLASH_SIZE      (*((unsigned short*)0x1FF8007C) << 10) // flash size register (RM0377 28.1.1)
 
@@ -250,7 +259,7 @@ extern uint32_t _eflash; // provided by linker script
 typedef struct {
     uint32_t* base;
     uint32_t off;
-    uint32_t buf[PAGE_NW];
+    uint32_t buf[FLASH_PAGE_NW];
 } flash_bw_state;
 
 void flash_buffered_write (flash_bw_state* state, uint32_t* src, uint32_t nwords);

@@ -32,6 +32,11 @@ void hal_pin_rxtx (s1_t val);
 void hal_pin_rst (u1_t val);
 
 /*
+ * wait until radio BUSY pin is low
+ */
+void hal_pin_busy_wait (void);
+
+/*
  * set DIO0/1/2 interrupt mask
  */
 #define HAL_IRQMASK_DIO0 (1<<0)
@@ -165,6 +170,8 @@ u1_t* hal_serial (void);
 u4_t  hal_region (void);
 u4_t  hal_hwid (void);
 u4_t  hal_unique (void);
+
+u4_t hal_dnonce_next (void);
 
 void hal_reboot (void);
 
