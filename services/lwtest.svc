@@ -7,6 +7,9 @@
 src:
     - lwtest/testmode.c
 
+require:
+    - lwmux
+
 hook.lwm_event: testmode_handleEvent
 
 # vim: syntax=yaml

@@ -9,6 +9,7 @@
 #include "lmic.h"
 
 typedef void (*lwm_complete) (void);
+typedef int (*lwm_jit_cb) (unsigned char* data, int dlen);
 
 typedef struct {
     unsigned char* data;
@@ -16,6 +17,7 @@ typedef struct {
     int port;
     int confirmed;
     lwm_complete txcomplete;
+    lwm_jit_cb jit_cb;
 } lwm_txinfo;
 
 typedef bool (*lwm_tx) (lwm_txinfo*);

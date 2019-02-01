@@ -197,6 +197,14 @@ components may still be undergoing significant changes. Some of these are:
     rectified, Basic MAC will only support the 1.0.x series of LoRaWAN.
 
 
+### Pre-release 3
+01-Feb-2019
+
+- Improved FSK support on SX1261/62 (fixed downlink)
+- Services can now specify dependencies directly in the .svc file
+- Minor fixes
+
+
 ### Pre-release 2
 15-Jan-2019
 

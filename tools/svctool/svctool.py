@@ -8,15 +8,17 @@ import sys
 import re
 import yaml
 
-from typing import Callable,Dict,List,Optional,Tuple
+from typing import Callable,Dict,List,Optional,Set,Tuple
 
 from cc import CommandCollection
 
 class Service:
-    def __init__(self, fn:str) -> None:
+    def __init__(self, svcid:str, fn:str) -> None:
+        self.id = svcid
         self.srcs = []
         self.hooks = []
         self.hookdefs = {}
+        self.require = []
         self.fn = fn
         with open(fn, 'r') as fh:
             d = yaml.safe_load(fh)
@@ -30,6 +32,10 @@ class Service:
                 if not isinstance(v, list):
                     v = [ v ]
                 self.hooks.extend([Service.parse_hook(h, fn) for h in v])
+            elif k == 'require':
+                if not isinstance(v, list):
+                    v = [ v ]
+                self.require.extend(v)
             elif k.startswith('hook.'):
                 self.hookdefs[k[5:]] = v
             else:
@@ -45,23 +51,30 @@ class Service:
 
 class ServiceCollection:
     def __init__(self) -> None:
-        self.svcs = []
+        self.svcs = {}
 
     def add(self, svc:Service) -> None:
-        self.svcs.append(svc)
+        self.svcs[svc.id] = svc
 
     def validate(self) -> None:
         pass
 
     def sources(self) -> List[str]:
-        return [src for svc in self.svcs for src in svc.srcs]
+        return [src for svc in self.svcs.values() for src in svc.srcs]
 
     def files(self) -> List[str]:
-        return [svc.fn for svc in self.svcs]
+        return [svc.fn for svc in self.svcs.values()]
+
+    def defines(self) -> List[str]:
+        return ['SVC_' + s for s in self.svcs.keys()]
 
     def hookdefs(self) -> Dict[str,Tuple[str,List[str]]]:
-        return { h[0]: (h[1], [hd for hd in (sv2.hookdefs.get(h[0]) for sv2 in self.svcs) if hd is not None]) for sv1 in self.svcs for h in sv1.hooks }
-    
+        return { h[0]: (h[1], [hd for hd in (sv2.hookdefs.get(h[0])
+            for sv2 in self.svcs.values()) if hd is not None])
+            for sv1 in self.svcs.values() for h in sv1.hooks }
+
+    def unresolved(self) -> Set[str]:
+        return set([s for sl in [svc.require for svc in self.svcs.values()] for s in sl if s not in self.svcs])
 
 class ServiceTool:
     def run(self) -> None:
@@ -82,16 +95,19 @@ class ServiceTool:
         for p in paths:
             fn = os.path.join(p, svcid + '.svc')
             if os.path.isfile(fn):
-                return Service(fn)
+                return Service(svcid, fn)
         return None
 
     def collect(args) -> ServiceCollection:
         sc = ServiceCollection()
-        for s in args.svc:
+        ss = set(args.svc)
+        while len(ss):
+            s = ss.pop()
             svc = ServiceTool.load(s, args.path or ['.'])
             if svc is None:
                 raise ValueError('Cannot find service description for "%s"' % s)
             sc.add(svc)
+            ss.update(sc.unresolved())
         sc.validate()
         return sc
 
@@ -110,6 +126,13 @@ class ServiceTool:
     def sources(self, args) -> None:
         sc = ServiceTool.collect(args)
         print(' '.join(sc.sources()))
+
+    @stdarg('svc')
+    @stdarg('--path')
+    @CommandCollection.cmd(help='output a list defines for the compiler')
+    def defines(self, args) -> None:
+        sc = ServiceTool.collect(args)
+        print(' '.join(sc.defines()))
 
     @stdarg('svc')
     @CommandCollection.arg('-d', action='store_true', help='create a dependency file for make')

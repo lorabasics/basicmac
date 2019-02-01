@@ -200,7 +200,6 @@ TYPEDEF_xref2osjob_t;
 
 #ifndef HAS_os_calls
 
-#if defined(CFG_lorawan11)
 #ifndef os_getNwkKey
 void os_getNwkKey (xref2u1_t buf);
 #endif
@@ -209,16 +208,6 @@ void os_getAppKey (xref2u1_t buf);
 #endif
 #ifndef os_getJoinEui
 void os_getJoinEui (xref2u1_t buf);
-#endif
-#else
-#ifndef os_getDevKey
-void os_getDevKey (xref2u1_t buf);
-#endif
-#ifndef os_getArtEui
-void os_getArtEui (xref2u1_t buf);
-#endif
-#define os_getNwkKey(buf) os_getDevKey(buf)
-#define os_getJoinEui(buf) os_getArtEui(buf)
 #endif
 #ifndef os_getDevEui
 void os_getDevEui (xref2u1_t buf);

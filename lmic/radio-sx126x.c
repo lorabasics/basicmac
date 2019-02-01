@@ -96,7 +96,7 @@
 
 // sleep modes
 #define SLEEP_COLD		0x00 // (no rtc timeout)
-#define SLEEP_WARM		0x04 // (no rtc timesout)
+#define SLEEP_WARM		0x04 // (no rtc timeout)
 
 // standby modes
 #define STDBY_RC		0x00
@@ -110,6 +110,13 @@
 #define PACKET_TYPE_FSK		0x00
 #define PACKET_TYPE_LORA	0x01
 
+// crc types
+#define CRC_OFF			0x01
+#define CRC_1_BYTE		0x00
+#define CRC_2_BYTE		0x02
+#define CRC_1_BYTE_INV		0x04
+#define CRC_2_BYTE_INV		0x06
+
 // irq types
 #define IRQ_TXDONE		(1 << 0)
 #define IRQ_RXDONE		(1 << 1)
@@ -121,9 +128,10 @@
 #define IRQ_CADDONE		(1 << 7)
 #define IRQ_CADDETECTED		(1 << 8)
 #define IRQ_TIMEOUT		(1 << 9)
+#define IRQ_ALL 		0x3FF
 
-#define LORA_TXDONE_FIXUP       us2osticks(800) // XXX
-#define FSK_TXDONE_FIXUP        us2osticks(800) // XXX
+#define LORA_TXDONE_FIXUP       us2osticks(43) // XXX
+#define FSK_TXDONE_FIXUP        us2osticks(0) // XXX
 #define FSK_RXDONE_FIXUP        us2osticks(0) // XXX
 
 // XXX
@@ -147,26 +155,30 @@ static const u2_t LORA_RXDONE_FIXUP_500[] = {
     [SF12] = us2osticks(    0),
 };
 
-// radio sleep state
-static int sleeping;
+// radio state
+static struct {
+    unsigned int calibrated:1, sleeping:1;
+} state;
 
 // ----------------------------------------
 
 static void writecmd (uint8_t cmd, const uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(cmd);
     for (u1_t i = 0; i < len; i++) {
         hal_spi(data[i]);
     }
     hal_spi_select(0);
+    // busy line will go high after max 600ns
+    // eventually during a subsequent hal_spi_select(1)...
 }
 
 static void WriteRegs (uint16_t addr, const uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(CMD_WRITEREGISTER);
     hal_spi(addr >> 8);
     hal_spi(addr);
@@ -183,7 +195,7 @@ static void WriteReg (uint16_t addr, uint8_t val) {
 static void WriteBuffer (uint8_t off, const uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(CMD_WRITEBUFFER);
     hal_spi(off);
     for (uint8_t i = 0; i < len; i++) {
@@ -195,7 +207,7 @@ static void WriteBuffer (uint8_t off, const uint8_t* data, uint8_t len) {
 static uint8_t readcmd (uint8_t cmd, uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(cmd);
     uint8_t stat = hal_spi(0x00);
     for (u1_t i = 0; i < len; i++) {
@@ -208,7 +220,7 @@ static uint8_t readcmd (uint8_t cmd, uint8_t* data, uint8_t len) {
 static void ReadRegs (uint16_t addr, uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(CMD_READREGISTER);
     hal_spi(addr >> 8);
     hal_spi(addr);
@@ -228,7 +240,7 @@ static uint8_t ReadReg (uint16_t addr) {
 static void ReadBuffer (uint8_t off, uint8_t* data, uint8_t len) {
     hal_spi_select(1);
     hal_pin_busy_wait();
-    sleeping = 0;
+    state.sleeping = 0;
     hal_spi(CMD_READBUFFER);
     hal_spi(off);
     hal_spi(0x00); // NOP
@@ -296,7 +308,6 @@ static void SetTxContinuousWave (void) {
 static void SetRx (uint32_t timeout64ms) {
     uint8_t timeout[3] = { timeout64ms >> 16, timeout64ms >> 8, timeout64ms };
     writecmd(CMD_SETRX, timeout, 3);
-    //debug_printf("SetRx(timeout64ms=%d, rxsyms=%d)\r\n", timeout64ms, LMIC.rxsyms);
 }
 
 // set radio to PACKET_TYPE_LORA or PACKET_TYPE_FSK mode
@@ -304,8 +315,34 @@ static void SetPacketType (uint8_t type) {
     writecmd(CMD_SETPACKETTYPE, &type, 1);
 }
 
+// calibrate the image rejection
+static void CalibrateImage (uint32_t freq) {
+    static const struct {
+	uint32_t min;
+	uint32_t max;
+	uint8_t freq[2];
+    } bands[] = {
+	{ 430000000, 440000000, (uint8_t[]) { 0x6B, 0x6F } },
+	{ 470000000, 510000000, (uint8_t[]) { 0x75, 0x81 } },
+	{ 779000000, 787000000, (uint8_t[]) { 0xC1, 0xC5 } },
+	{ 863000000, 870000000, (uint8_t[]) { 0xD7, 0xDB } },
+	{ 902000000, 928000000, (uint8_t[]) { 0xE1, 0xE9 } },
+    };
+    for (int i = 0; i < sizeof(bands) / sizeof(bands[0]); i++) {
+	if (freq >= bands[i].min && freq <= bands[i].max) {
+	    writecmd(CMD_CALIBRATEIMAGE, bands[i].freq, 2);
+	}
+    }
+}
+
 // set rf frequency (in Hz)
 static void SetRfFrequency (uint32_t freq) {
+    // perform image calibration once
+    if (state.calibrated == 0) {
+	CalibrateImage(freq);
+	state.calibrated = 1;
+    }
+    // set frequency
     uint8_t buf[4];
     os_wmsbf4(buf, (uint32_t) (((uint64_t) freq << 25) / 32000000));
     writecmd(CMD_SETRFFREQUENCY, buf, 4);
@@ -317,7 +354,7 @@ static void SetModulationParamsLora (u2_t rps) {
     param[0] = getSf(rps) + 6; // SF (sf7=1)
     param[1] = getBw(rps) + 4; // BW (bw125=0)
     param[2] = getCr(rps) + 1; // CR (cr45=0)
-    param[3] = ((1 << (getSf(LMIC.rps) + 1 - getBw(LMIC.rps) + 8)) >= 16384); // low-data-rate-opt (symbol time equal or above 16.38 ms)
+    param[3] = (getSf(LMIC.rps) - getBw(LMIC.rps) >= 5); // low-data-rate-opt (symbol time equal or above 16.38 ms)
     writecmd(CMD_SETMODULATIONPARAMS, param, 4);
 }
 
@@ -327,9 +364,9 @@ static void SetModulationParamsFsk (void) {
     param[0] = 0x00; // bitrate 50kbps (32 * fxtal / bitrate = 32 * 32000000 / 50000 = 0x005000)
     param[1] = 0x50;
     param[2] = 0x00;
-    param[3] = 0x09; // pulse shape gaussian BT 0.5
-    param[4] = 0x13; // bandwidth 93.8kHz DSB (~ 50kHz SSB)
-    param[5] = 0x00; // frequency deviation 25kHz (deviation * 2^25 / fxtal = 25000 * 2^25 / 32000000 = 0x006666)
+    param[3] = 0x09; // TX pulse shape filter gaussian BT 0.5
+    param[4] = 0x0B; // RX bandwidth 117.3kHz DSB
+    param[5] = 0x00; // TX frequency deviation 25kHz (deviation * 2^25 / fxtal = 25000 * 2^25 / 32000000 = 0x006666)
     param[6] = 0x66;
     param[7] = 0x66;
     writecmd(CMD_SETMODULATIONPARAMS, param, 8);
@@ -348,23 +385,23 @@ static void SetPacketParamsLora (u2_t rps, int len, int inv) {
 }
 
 // configure packet handling for FSK
-static void SetPacketParamsFsk (int crc, int len) {
+static void SetPacketParamsFsk (u2_t rps, int len) {
     uint8_t param[9];
-    param[0] = 0x00; // 40 bits / 5 bytes preamble
+    param[0] = 0x00; // TX preamble length 40 bits / 5 bytes
     param[1] = 0x28;
-    param[2] = 0x05; // preamble detector length 16 bits
+    param[2] = 0x05; // RX preamble detector length 16 bits
     param[3] = 0x18; // sync word length 24 bits / 3 bytes
     param[4] = 0x00; // node address filtering disabled
     param[5] = 0x01; // variable size packets, length is included
     param[6] = len;  // payload length
-    param[7] = (crc) ? 0x06 : 0x01; // 16 bit inverted CRC or off
+    param[7] = getNocrc(rps) ? CRC_OFF : CRC_2_BYTE_INV; // off or CCITT
     param[8] = 0x01; // whitening enabled
     writecmd(CMD_SETPACKETPARAMS, param, 9);
 }
 
 // clear irq register
-static void ClearIrqStatus (void) {
-    uint8_t buf[2] = { 0xFF, 0xFF };
+static void ClearIrqStatus (uint16_t mask) {
+    uint8_t buf[2] = { mask >> 8, mask & 0xFF };
     writecmd(CMD_CLEARIRQSTATUS, buf, 2);
 }
 
@@ -446,7 +483,9 @@ static void SetSyncWordFsk (uint32_t syncword) {
 
 // set seed for FSK data whitening
 static void SetWhiteningSeed (uint16_t seed) {
-    uint8_t buf[2] = { seed >> 8, seed & 0xFF };
+    uint8_t buf[2];
+    buf[0] = (ReadReg(REG_WHITENINGMSB) & 0xFE) | ((seed >> 8) & 0x01); // don't modify the top-most 7 bits!
+    buf[1] = seed;
     WriteRegs(REG_WHITENINGMSB, buf, 2);
 }
 
@@ -470,21 +509,21 @@ static uint32_t GetRandom (void) {
     // read random register
     ReadRegs(REG_RANDOMNUMBERGEN0, buf, 4);
     // standby
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     return *((uint32_t*) buf);
 }
 
 void radio_sleep (void) {
-    if (sleeping == 0) {
+    if (state.sleeping == 0) {
 	SetSleep(SLEEP_COLD);
-	sleeping = 1;
+	state.sleeping = 1;
     }
 }
 
 static void txlora (void) {
     SetRegulatorMode(REGMODE_DCDC);
     SetDIO2AsRfSwitchCtrl(1);
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     SetPacketType(PACKET_TYPE_LORA);
     SetRfFrequency(LMIC.freq);
     SetModulationParamsLora(LMIC.rps);
@@ -492,7 +531,7 @@ static void txlora (void) {
     SetTxPower(LMIC.txpow + LMIC.txPowAdj);
     SetSyncWordLora(0x3444);
     WriteFifo(LMIC.frame, LMIC.dataLen);
-    ClearIrqStatus();
+    ClearIrqStatus(IRQ_ALL);
     SetDioIrqParams(IRQ_TXDONE | IRQ_TIMEOUT);
 
     // enable IRQs in HAL
@@ -509,17 +548,17 @@ static void txlora (void) {
 static void txfsk (void) {
     SetRegulatorMode(REGMODE_DCDC);
     SetDIO2AsRfSwitchCtrl(1);
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     SetPacketType(PACKET_TYPE_FSK);
     SetRfFrequency(LMIC.freq);
     SetModulationParamsFsk();
-    SetPacketParamsFsk(1, LMIC.dataLen);
+    SetPacketParamsFsk(LMIC.rps, LMIC.dataLen);
     SetCrc16(0x1D0F, 0x1021); // CCITT
     SetWhiteningSeed(0x01FF);
     SetSyncWordFsk(0xC194C1);
     SetTxPower(LMIC.txpow + LMIC.txPowAdj);
     WriteFifo(LMIC.frame, LMIC.dataLen);
-    ClearIrqStatus();
+    ClearIrqStatus(IRQ_ALL);
     SetDioIrqParams(IRQ_TXDONE | IRQ_TIMEOUT);
 
     // enable IRQs in HAL
@@ -536,10 +575,10 @@ static void txfsk (void) {
 static void txcw (void) {
     SetRegulatorMode(REGMODE_DCDC);
     SetDIO2AsRfSwitchCtrl(1);
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     SetRfFrequency(LMIC.freq);
     SetTxPower(LMIC.txpow + LMIC.txPowAdj);
-    ClearIrqStatus();
+    ClearIrqStatus(IRQ_ALL);
 
     // antenna switch / power accounting
     hal_pin_rxtx(1);
@@ -568,18 +607,18 @@ static void rxfsk (bool rxcontinuous) {
     ostime_t t0 = os_getTime();
     SetRegulatorMode(REGMODE_DCDC);
     SetDIO2AsRfSwitchCtrl(1);
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     SetPacketType(PACKET_TYPE_FSK);
     SetRfFrequency(LMIC.freq);
     SetModulationParamsFsk();
-    SetPacketParamsFsk(0, 255); // no crc on downlink
-    //SetCrc16(0x1D0F, 0x1021); // CCITT
+    SetPacketParamsFsk(LMIC.rps, 255);
+    SetCrc16(0x1D0F, 0x1021); // CCITT
     SetWhiteningSeed(0x01FF);
     SetSyncWordFsk(0xC194C1);
     StopTimerOnPreamble(0);
-    SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT | IRQ_CRCERR);
-
-    ClearIrqStatus();
+    // FSK interrupts: TXDONE, RXDONE, PREAMBLEDETECTED, SYNCWORDVALID, CRCERR, TIMEOUT
+    SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT);
+    ClearIrqStatus(IRQ_ALL);
 
     // enable IRQs in HAL
     hal_irqmask_set(HAL_IRQMASK_DIO1);
@@ -590,8 +629,8 @@ static void rxfsk (bool rxcontinuous) {
 	BACKTRACE();
 	// enable antenna switch for RX (and account power consumption)
 	hal_pin_rxtx(0);
-	// rx infinitely
-	SetRx(0xFFFFFF);
+	// rx infinitely (no timeout, until rxdone, will be restarted)
+	SetRx(0);
     } else { // single rx
 	BACKTRACE();
 	// busy wait until exact rx time
@@ -603,8 +642,8 @@ static void rxfsk (bool rxcontinuous) {
         hal_waitUntil(LMIC.rxtime);
 	// enable antenna switch for RX (and account power consumption)
 	hal_pin_rxtx(0);
-	// rx for max LMIC.rxsyms symbols
-	SetRx(64); // (1ms) XXX compute dynamic timeout based on LMIC.rxsyms!!!
+	// rx for max LMIC.rxsyms symbols (rxsyms = nbytes for FSK)
+	SetRx((LMIC.rxsyms << 9) / 50); // nbytes * 8 * 64 * 1000 / 50000
     }
     hal_enableIRQs();
 }
@@ -614,16 +653,16 @@ static void rxlora (bool rxcontinuous) {
     ostime_t t0 = os_getTime();
     SetRegulatorMode(REGMODE_DCDC);
     SetDIO2AsRfSwitchCtrl(1);
-    SetStandby(STDBY_XOSC);
+    SetStandby(STDBY_RC);
     SetPacketType(PACKET_TYPE_LORA);
     SetRfFrequency(LMIC.freq);
     SetModulationParamsLora(LMIC.rps);
     SetPacketParamsLora(LMIC.rps, 255, !LMIC.noRXIQinversion);
     SetSyncWordLora(0x3444);
-    StopTimerOnPreamble(1);
-    SetLoRaSymbNumTimeout(8);
-    SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT | IRQ_CRCERR);
-    ClearIrqStatus();
+    StopTimerOnPreamble(0);
+    SetLoRaSymbNumTimeout(LMIC.rxsyms);
+    SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT);
+    ClearIrqStatus(IRQ_ALL);
 
     // enable IRQs in HAL
     hal_irqmask_set(HAL_IRQMASK_DIO1);
@@ -634,8 +673,8 @@ static void rxlora (bool rxcontinuous) {
 	BACKTRACE();
 	// enable antenna switch for RX (and account power consumption)
 	hal_pin_rxtx(0);
-	// rx infinitely
-	SetRx(0xFFFFFF);
+	// rx infinitely (no timeout, until rxdone, will be restarted)
+	SetRx(0);
     } else { // single rx
 	BACKTRACE();
 	// busy wait until exact rx time
@@ -648,21 +687,7 @@ static void rxlora (bool rxcontinuous) {
 	// enable antenna switch for RX (and account power consumption)
 	hal_pin_rxtx(0);
 	// rx for max LMIC.rxsyms symbols
-	// from lmic.c:
-	// Table below defines the size of one symbol as
-	//   symtime = 256us * 2^T(sf,bw)
-	// 256us is called one symunit.
-	//                 SF:
-	//      BW:      |__7___8___9__10__11__12
-	//      125kHz   |  2   3   4   5   6   7
-	//      250kHz   |  1   2   3   4   5   6
-	//      500kHz   |  0   1   2   3   4   5
-	//
-	// BW125=0, BW250, BW500, BWrfu
-	// FSK=0, SF7, SF8, SF9, SF10, SF11, SF12, SFrfu
-	//
-	// SF=7 BW=125: symtime=1024us
-	SetRx((LMIC.rxsyms << (getSf(LMIC.rps) + 1 - getBw(LMIC.rps) + 8 + 6)) / 1000); // N * 2^T(sf,bw) * 256 * 64 / 1000
+	SetRx(0); // (infinite, timeout set via SetLoRaSymbNumTimeout)
     }
     hal_enableIRQs();
 }
@@ -691,6 +716,9 @@ void radio_reset (void) {
 
     // check reset value
     ASSERT( ReadReg(REG_LORASYNCWORDLSB) == 0x24 );
+
+    // initialize state
+    state.sleeping = state.calibrated = 0;
 }
 
 void radio_init (void) {
@@ -742,7 +770,7 @@ void radio_irq_process (ostime_t irqtime) {
             LMIC.dataLen = 0;
         } else {
 	    // unexpected irq
-	    debug_printf("UNEXPECTED RADIO IRQ %04x\r\n", irqflags);
+	    debug_printf("UNEXPECTED RADIO IRQ %04x (after %d ticks, %.1Fms)\r\n", irqflags, irqtime - LMIC.rxtime, osticks2us(irqtime - LMIC.rxtime), 3);
 	    TRACE_VAL(irqflags);
 	    ASSERT(0);
 	}
@@ -794,7 +822,7 @@ void radio_irq_process (ostime_t irqtime) {
     SetDioIrqParams(0);
 
     // clear IRQ flags
-    ClearIrqStatus();
+    ClearIrqStatus(IRQ_ALL);
 }
 
 #endif

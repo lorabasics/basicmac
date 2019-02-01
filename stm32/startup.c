@@ -5,7 +5,6 @@
 
 #include "lmic.h"
 #include "hw.h"
-#include "boottab.h"
 
 #if defined(STM32L0)
 #define MAX_IRQn                32      /* see PM0223, 2.3.4, pg. 29 */
@@ -55,9 +54,11 @@ void _start (boot_boottab* boottab) {
 
 // Firmware header
 __attribute__((section(".fwhdr")))
-const volatile boot_fwhdr fwhdr = {
+const volatile hal_fwhdr fwhdr = {
     // CRC and size will be patched by external tool
-    .crc	= 0,
-    .size	= BOOT_MAGIC_SIZE,
-    .entrypoint = (uint32_t) _start,
+    .boot.crc           = 0,
+    .boot.size          = BOOT_MAGIC_SIZE,
+    .boot.entrypoint    = (uint32_t) _start,
+
+    .version            = 0,
 };

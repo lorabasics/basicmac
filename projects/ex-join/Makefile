@@ -1,6 +1,8 @@
 TARGET  := b_l072z_lrwan1
 #TARGET  := nucleo_l053r8-sx1276mbed
+#TARGET  := nucleo_l053r8-sx1261mbed
 #TARGET  := nucleo_l053r8-sx1262mbed
+#TARGET  := unicorn
 
 VARIANTS := eu868 us915
 
@@ -9,9 +11,6 @@ CFLAGS += -g
 CFLAGS += -Wall -Wno-main
 
 SVCS	+= app
-SVCS	+= appstart
-SVCS	+= lwmux
-SVCS	+= lwtest
 
 DEFS	+= -DDEBUG_RX
 DEFS	+= -DDEBUG_TX

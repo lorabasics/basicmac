@@ -1185,9 +1185,9 @@ void hal_debug_led (int val) {
 void hal_fwinfo (hal_fwi* fwi) {
     fwi->blversion = HAL.boottab->version;
 
-    extern volatile boot_fwhdr fwhdr;
-    fwi->version = 0; // XXX no longer in fwhdr
-    fwi->crc = fwhdr.crc;
+    extern volatile hal_fwhdr fwhdr;
+    fwi->version = fwhdr.version;
+    fwi->crc = fwhdr.boot.crc;
     fwi->flashsz = FLASH_SIZE;
 }
 

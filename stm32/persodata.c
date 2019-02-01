@@ -102,8 +102,6 @@ void os_getDevEui (u1_t* buf) {
     memcpy(buf, hal_deveui(), 8);
 }
 
-#if defined(CFG_lorawan11)
-
 // provide join ID (8 bytes, LSBF)
 void os_getJoinEui (u1_t* buf) {
     memcpy(buf, hal_joineui(), 8);
@@ -119,17 +117,4 @@ void os_getAppKey (u1_t* buf) {
     memcpy(buf, hal_appkey(), 16);
 }
 
-#else
-
-// provide application router EUI (8 bytes, LSBF)
-void os_getArtEui (u1_t* buf) {
-    memcpy(buf, hal_joineui(), 8);
-}
-
-// provide device key (16 bytes)
-void os_getDevKey (u1_t* buf) {
-    memcpy(buf, hal_nwkkey(), 16);
-}
-
-#endif
 #endif

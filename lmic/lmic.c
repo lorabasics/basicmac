@@ -14,8 +14,8 @@
 #define PAMBL_SYMS_BCN BCN_PREAMBLE_LEN
 #define PAMBL_SYMS     STD_PREAMBLE_LEN
 #define PAMBL_FSK  5
-#define PRERX_FSK  1
-#define RXLEN_FSK  (1+5+2)
+#define PRERX_FSK  2
+#define RXLEN_FSK  (1+5+2+1)
 #define BCN_100PPM_ms 13   // 13ms = 128sec*100ppm which is roughly +/-100ppm
 
 #define BCN_INTV_osticks       sec2osticks(BCN_INTV_sec)
@@ -1560,7 +1560,7 @@ static bit_t decodeFrame (void) {
 
     if( port == 0 && olen > 0 )
         goto norx;
-    
+
     u4_t* pseqnoDn;
 #if defined(CFG_lorawan11)
     pseqnoDn = (port > 0 && (LMIC.opts & OPT_LORAWAN11))
@@ -2146,9 +2146,18 @@ static void setupRx2 (void) {
 
 
 static void schedRx2 (u1_t delay, osjobcb_t func) {
-    // Add 1.5 symbols we need 5 out of 8. Try to sync 1.5 symbols into the preamble.
-    LMIC.rxtime = LMIC.txend + delay*sec2osticks(1) + dr2hsym(LMIC.dn2Dr, PAMBL_SYMS-MINRX_SYMS);
-    adjustByRxdErr(delay, LMIC.dn2Dr);
+#if defined(CFG_eu868) && !defined(CFG_kr920)
+    if( getSf(dndr2rps(LMIC.dn2Dr)) == FSK ) {
+        LMIC.rxtime = LMIC.txend + delay*sec2osticks(1) - PRERX_FSK*us2osticksRound(160);
+        LMIC.rxsyms = RXLEN_FSK;
+    }
+    else
+#endif
+    {
+	// Add 1.5 symbols we need 5 out of 8. Try to sync 1.5 symbols into the preamble.
+	LMIC.rxtime = LMIC.txend + delay*sec2osticks(1) + dr2hsym(LMIC.dn2Dr, PAMBL_SYMS-MINRX_SYMS);
+	adjustByRxdErr(delay, LMIC.dn2Dr);
+    }
     os_setTimedCallback(&LMIC.osjob, LMIC.rxtime - RX_RAMPUP, func);
 }
 
@@ -2184,7 +2193,7 @@ static void txDone (u1_t delay, osjobcb_t func) {
     LMIC.dndr = updr2dndr(LMIC.dndr, LMIC.dn1DrOff);
     LMIC.rps  = dndr2rps(LMIC.dndr);
 #if defined(CFG_eu868) && !defined(CFG_kr920)
-    if( /* TX datarate */LMIC.rxsyms == DR_FSK ) {
+    if( getSf(LMIC.rps) == FSK ) {
         LMIC.rxtime = LMIC.txend + delay*sec2osticks(1) - PRERX_FSK*us2osticksRound(160);
         LMIC.rxsyms = RXLEN_FSK;
     }

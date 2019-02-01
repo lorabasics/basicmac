@@ -160,6 +160,17 @@ void lwm_slotparams (u4_t freq, dr_t dr, ostime_t interval, int slotsz, int miss
 // ------------------------------------------------
 // TX opportunity
 
+// TODO: this should be provided by the region definition
+static int max_plen (dr_t dr) {
+#if defined(CFG_eu868)
+    static const uint8_t MAX_PLEN[4] = { 51, 51, 51, 115 };
+    return (dr < 4) ? MAX_PLEN[dr] : 242;
+#elif defined(CFG_us915)
+    static const uint8_t MAX_PLEN[3] = { 11, 53, 125 };
+    return (dr < 3) ? MAX_PLEN[dr] : 242;
+#endif
+}
+
 static void tx_opportunity (osjob_t* j) {
     ASSERT(!(state.flags & (FLAG_BUSY | FLAG_JOINING)));
     lwm_job* job;
@@ -168,12 +179,10 @@ static void tx_opportunity (osjob_t* j) {
         lwm_txinfo txinfo;
         memset(&txinfo, 0, sizeof(txinfo));
         txinfo.data = LMIC.pendTxData;
-        txinfo.dlen = 242; // TODO: provide max payload size
+        txinfo.dlen = max_plen(LMIC.datarate);
         if (job->txfunc(&txinfo)) {
-            // TODO: check txinfo.dlen!!
-            if (txinfo.data == NULL) {
-                // TODO: invoke data assembly callback later
-            } else if (txinfo.data != LMIC.pendTxData) {
+            ASSERT((unsigned int) txinfo.dlen < MAX_LEN_PAYLOAD);
+            if (txinfo.data != LMIC.pendTxData) {
                 os_copyMem(LMIC.pendTxData, txinfo.data, txinfo.dlen);
             }
             LMIC.pendTxConf = txinfo.confirmed;

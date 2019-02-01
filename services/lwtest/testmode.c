@@ -11,7 +11,7 @@
 
 #define TESTMODE_MAXCNT      192
 #define TESTMODE_TIMEOUT    (30*60) // (sec)
-#define TESTMODE_INTERVAL    5      // (sec)
+#define TESTMODE_INTERVAL    2      // (sec)
 
 // commands
 #define TESTCMD_STOP         0x00

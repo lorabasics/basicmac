@@ -7,6 +7,7 @@
 #define _hal_stm32_h_
 
 #include "hw.h"
+#include "boottab.h"
 
 // NVIC interrupt definition
 typedef struct {
@@ -15,6 +16,13 @@ typedef struct {
 } irqdef;
 
 extern const irqdef HAL_irqdefs[];
+
+// Firmware header -- do not modify (append only)
+typedef struct {
+    boot_fwhdr boot;
+
+    uint32_t version;
+} hal_fwhdr;
 
 void usart_init (void);
 void usart_irq (void);

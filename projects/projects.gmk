@@ -58,14 +58,15 @@ ifneq ($(SVCCHECK),)
     $(error $(SVCCHECK))
 endif
 
-SVCDEFS	 	 = $(BUILDDIR)/svcdefs.h
+SVCDEFS_H 	 = $(BUILDDIR)/svcdefs.h
 ifneq ($(SVCS),)
     VPATH	+= $(SVCSDIR)
     SVCSRCS	:= $(shell $(SVCTOOL) sources $(SVCTOOLARGS))	# only once
     SRCS	+= $(SVCSRCS)
-    SVC_DEPS	+= $(SVCDEFS)
+    SVC_DEPS	+= $(SVCDEFS_H)
     CFLAGS	+= -I$(BUILDDIR) -I$(SVCSDIR)
-    DEFS	+= $(addprefix -DSVC_,$(SVCS))
+    SVCSDEFS	:= $(shell $(SVCTOOL) defines $(SVCTOOLARGS))	# only once
+    DEFS	+= $(addprefix -D,$(SVCSDEFS))
 endif
 
 OBJS		 = $(filter-out $(addprefix $(BUILDDIR)/,$(OBJS_BLACKLIST)),$(patsubst %,$(BUILDDIR)/%.o,$(basename $(SRCS))))
@@ -114,7 +115,7 @@ $(BUILDDIR)/%.hex: $(BUILDDIR)/%.out
 	$(HEX) $< $@
 	$(FWTOOL) patch $@
 
-$(SVCDEFS): $(MAKE_DEPS) | $(BUILDDIRS)
+$(SVCDEFS_H): $(MAKE_DEPS) | $(BUILDDIRS)
 	$(SVCTOOL) svcdefs -o $@ -d $(SVCTOOLARGS)
 
 clean:
@@ -140,6 +141,6 @@ $(BUILDDIRS):
 
 .DELETE_ON_ERROR:
 
--include $(OBJS:.o=.d) $(SVCDEFS:.h=.d)
+-include $(OBJS:.o=.d) $(SVCDEFS_H:.h=.d)
 
 # vim: filetype=make
