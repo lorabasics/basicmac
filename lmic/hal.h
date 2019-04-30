@@ -27,6 +27,12 @@ void hal_watchcount (int cnt);
 void hal_pin_rxtx (s1_t val);
 
 /*
+ * control radio TCXO power (0=off, 1=on)
+ * (return if TCXO is present and in use)
+ */
+bool hal_pin_tcxo (u1_t val);
+
+/*
  * control radio RST pin (0=low, 1=high, 2=floating)
  */
 void hal_pin_rst (u1_t val);
@@ -79,20 +85,6 @@ void hal_enableIRQs (void);
 u1_t hal_sleep (u1_t type, u4_t targettime);
 
 /*
- * disable deeper sleep modes.
- *   - might be invoked nested
- *   - will be followed by matching call to hal_enableSleep()
- */
-#define HAL_SLEEP_MEDIUM	0
-#define HAL_SLEEP_DEEP		1
-void hal_disableSleep (u1_t kind);
-
-/*
- * enable deeper sleep modes.
- */
-void hal_enableSleep (u1_t kind);
-
-/*
  * return 32-bit system time in ticks.
  */
 u4_t hal_ticks (void);
@@ -128,23 +120,6 @@ void hal_setBattLevel (u1_t level);
  *   - action could be HALT or reboot
  */
 void hal_failed (void);
-
-#ifdef CFG_powerstats
-/*
- * ***EXPERIMENTAL***
- *
- * retrieve HAL runtime statistics
- */
-typedef struct {
-    uint32_t run_ms;			// running
-    uint32_t sleep1_ms;			// normal sleep
-    uint32_t sleep2_ms;			// medium sleep
-    uint32_t sleep3_s;			// deep sleep
-    uint32_t rx_ms, tx_ms;		// rx/tx time
-} hal_statistics;
-void hal_stats_get (hal_statistics* stats);
-void hal_stats_consume (hal_statistics* stats);
-#endif
 
 #ifdef CFG_DEBUG
 

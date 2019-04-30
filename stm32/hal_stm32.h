@@ -9,6 +9,40 @@
 #include "hw.h"
 #include "boottab.h"
 
+// Get current PC
+__attribute__((always_inline)) static inline uint32_t hal_getpc (void) {
+    uint32_t addr;
+    __asm__ volatile ("mov %[addr], pc" : [addr]"=r" (addr) : : );
+    return addr;
+}
+
+// Macro to place code in RAM
+#define __fastcode __attribute__((noinline,section(".fastcode")))
+
+// Sleep modes
+enum {
+    HAL_SLEEP_S0,       // sleep, full speed clock
+    HAL_SLEEP_S1,       // sleep, reduced speed clock
+    HAL_SLEEP_S2,       // stop mode
+
+    HAL_SLEEP_CNT       // number of sleep states
+};
+
+void hal_setMaxSleep (unsigned int level);
+void hal_clearMaxSleep (unsigned int level);
+
+#ifdef CFG_rtstats
+typedef struct {
+    uint32_t run_ms;
+    uint32_t sleep_ms[HAL_SLEEP_CNT];
+} hal_rtstats;
+
+void hal_rtstats_get (hal_rtstats* stats);
+void hal_rtstats_consume (hal_rtstats* stats);
+void hal_rtstats_collect (hal_rtstats* stats);
+#endif
+
+
 // NVIC interrupt definition
 typedef struct {
     uint32_t	num;		// NVIC interrupt number
@@ -24,9 +58,14 @@ typedef struct {
     uint32_t version;
 } hal_fwhdr;
 
+// Personalization data (persodata.c)
+void pd_init (void);
+bool pd_verify (void);
+
 void usart_init (void);
 void usart_irq (void);
 
+// TODO - use API from peripherals.h
 void flash_write (uint32_t* dst, uint32_t* src, uint32_t nwords, bool erase);
 
 #if defined(SVC_frag)
@@ -49,6 +88,7 @@ void flash_write (uint32_t* dst, uint32_t* src, uint32_t nwords, bool erase);
 
 #endif
 
-
+// experimental
+bool hal_set_update (void* ptr);
 
 #endif

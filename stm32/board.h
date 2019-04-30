@@ -20,8 +20,8 @@
 #define BRD_AF(gpio)			(((gpio) >> 8) & 0x0f)
 
 // alternate function configuratons (c)
-#define BRD_GPIO_PWM_CHAN(ch)		(ch << 12)
-#define BRD_GPIO_PWM_GET_CHAN(gpio)	(((gpio) >> 12) & 0x0f)
+#define BRD_GPIO_CHAN(ch)               ((ch) << 12)
+#define BRD_GPIO_GET_CHAN(gpio)         (((gpio) >> 12) & 0x07)
 
 // flags (f)
 #define BRD_GPIO_EXT_PULLUP		(1 << 16)

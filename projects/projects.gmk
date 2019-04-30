@@ -5,20 +5,21 @@
 
 -include Makefile.local
 -include ../Makefile.local
-include ../platform.mk
-include ../variants.mk
 
-ifeq ($(TARGET),)
-    $(error "TARGET not specified (See platform.gmk for possible settings)")
-endif
+TOPDIR ?= ../..
 
-LMICDIR		:= ../../lmic
-TOOLSDIR	:= ../../tools
-COMMONDIR	:= ../../common
-SVCSDIR		:= ../../services
+include $(TOPDIR)/projects/variants.mk
+include $(TOPDIR)/projects/platform.mk
+
+#TARGET ?= $(error "TARGET not specified (See platform.gmk for possible settings)")
+
+LMICDIR		:= $(TOPDIR)/lmic
+TOOLSDIR	:= $(TOPDIR)/tools
+COMMONDIR	:= $(TOPDIR)/common
+SVCSDIR		:= $(TOPDIR)/services
 BUILDDIR_PFX	:= build-
 
-PROJECT		?= $(notdir $(CURDIR))
+PROJECT		?= $(notdir $(lastword $(CURDIR)))
 
 CFLAGS		+= $(FLAGS)
 LDFLAGS		+= $(FLAGS)
@@ -26,6 +27,7 @@ ASFLAGS		+= $(FLAGS)
 
 DEFS		+= -DVARIANT="\"$(VARIANT)\""
 DEFS		+= -DPROJECT="\"$(PROJECT)\""
+DEFS		+= $(addprefix -DCFG_,$(REGIONS))
 DEFS		+= $(addprefix -DCFG_,$(LMICCFG))
 
 PDEFS		+= $(filter-out $(UNDEFS),$(DEFS))
@@ -35,6 +37,8 @@ ASDEFS		+= $(PDEFS)
 CFLAGS		+= -I$(LMICDIR) -I$(HALDIR)
 CFLAGS		+= -I$(COMMONDIR)
 
+BUILDTIME	:= $(shell date -u +'%FT%TZ')
+
 PATCHFLAGS	+= $(addprefix --target=,$(HWID.$(VARIANT)))
 ifneq ($(RELEASE),)
 PATCHFLAGS	+= $(addprefix --version=,$(RELEASE))
@@ -42,7 +46,7 @@ else
 PATCHFLAGS	+= -v
 endif
 
-SRCS		 = $(notdir $(wildcard $(LMICDIR)/*.c $(HALDIR)/*.c *.c))
+SRCS		 = $(notdir $(wildcard $(LMICDIR)/*.c $(HALDIR)/*.c *.c $(HALDIR)/*.S))
 
 VPATH		+= $(LMICDIR) $(HALDIR)
 
@@ -71,8 +75,8 @@ endif
 
 OBJS		 = $(filter-out $(addprefix $(BUILDDIR)/,$(OBJS_BLACKLIST)),$(patsubst %,$(BUILDDIR)/%.o,$(basename $(SRCS))))
 
-ALL		?= $(error No output targets collected for this build)
-LOAD		?= $(error No load target collected for this build)
+ALL		?= error_all
+LOAD		?= error_load
 
 OOFLAGS		 = $(addprefix -f $(TOOLSDIR)/openocd/,$(OOCFGS))
 
@@ -90,6 +94,12 @@ variant-%:
 	$(MAKE) -j 6 variant VARIANT=$*
 
 all: $(ALL)
+
+error_all:
+	$(error No output targets collected for this build)
+
+error_load:
+	$(error No load target collected for this build)
 
 $(OBJS): $(MAKE_DEPS)
 
@@ -110,10 +120,19 @@ $(BUILDDIR)/%.out: $(OBJS)
 $(BUILDDIR)/%.a: $(OBJS)
 	$(AR) rcs $@ $^ -o $@
 
-$(BUILDDIR)/%.hex: export STDOUT_PREFIX=$(SPACE)
-$(BUILDDIR)/%.hex: $(BUILDDIR)/%.out
+$(BUILDDIR)/%.unpatched.hex: $(BUILDDIR)/%.out
 	$(HEX) $< $@
-	$(FWTOOL) patch $@
+
+$(BUILDDIR)/%.zfw: $(BUILDDIR)/%.unpatched.hex
+	$(ZFWTOOL) create --patch \
+	    --meta project "$(PROJECT)" \
+	    --meta variant "$(VARIANT)" \
+	    --meta build_time "$(BUILDTIME)" \
+	    $< $@
+	$(ZFWTOOL) info $@
+
+$(BUILDDIR)/%.hex: $(BUILDDIR)/%.zfw
+	$(ZFWTOOL) export $< $@
 
 $(SVCDEFS_H): $(MAKE_DEPS) | $(BUILDDIRS)
 	$(SVCTOOL) svcdefs -o $@ -d $(SVCTOOLARGS)

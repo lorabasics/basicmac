@@ -31,6 +31,7 @@ static struct {
     uint8_t confirmed; // request confirmation for uplinks
     uint16_t dncnt;    // downlink counter (to be echoed)
     uint16_t upcnt;    // number of up messages w/o downlink (max 192)
+    uint32_t uptotal;  // total number of up messages since start of test mode
     ostime_t dntime;   // time of last downlink (max 30 minutes)
     osjob_t timer;     // cw timeout or uplink timer
     lwm_job lwmjob;    // uplink job
@@ -38,10 +39,13 @@ static struct {
 
 static void starttestmode (void) {
     debug_printf("TEST MODE START\r\n");
+    testmode.uptotal = 0;
     testmode.active = 1;
     // disable duty cycle
     LMIC_enableFastJoin();
     LMIC_disableDC();
+    // don't send MAC options immediately in empty frame, wait for next uplink
+    LMIC.polltimeout = sec2osticks(30);
     // disable application messages
     lwm_setpriority(LWM_PRIO_MAX);
 }
@@ -54,9 +58,10 @@ static void stoptestmode (void) {
     // reset duty cycle limitations (XXX)
 #if defined(CFG_eu868)
     LMIC.noDC = 0;
-    LMIC.bands[BAND_MILLI].txcap = 1000;  // 0.1%
 #endif // defined(CFG_eu868)
     LMIC.opmode &= ~OP_TESTMODE;
+    // send MAC options immediately
+    LMIC.polltimeout = 0;
     // enable application traffic
     lwm_setpriority(LWM_PRIO_MIN);
 }
@@ -80,7 +85,8 @@ static bool txfunc (lwm_txinfo* txi) {
 	txi->dlen = 2;
     }
     LMIC_setAdrMode(1);
-    debug_printf("TESTMODE UPLINK (%sconfirmed, len=%d): %h\r\n", (testmode.confirmed) ? "" : "un", txi->dlen, txi->data, txi->dlen);
+    debug_printf("TESTMODE UPLINK #%d (%sconfirmed, len=%d): %h\r\n",
+		 testmode.uptotal++, (testmode.confirmed) ? "" : "un", txi->dlen, txi->data, txi->dlen);
     return true;
 }
 
@@ -127,54 +133,56 @@ void testmode_handleEvent (ev_t ev) {
 		    testmode.dncnt += 1;
 
 		    // dispatch test commands
-		    switch (buf[0]) {
+		    if (LMIC.dataLen > 0) {
+			switch (buf[0]) {
 
-			case TESTCMD_STOP: // deactivate test mode
-			    if (LMIC.dataLen == 1) {
-				stoptestmode();
-			    }
-			    break;
+			    case TESTCMD_STOP: // deactivate test mode
+				if (LMIC.dataLen == 1) {
+				    stoptestmode();
+				}
+				break;
 
-			case TESTCMD_CONFIRMED: // activate confirmations
-			    if (LMIC.dataLen == 1) {
-				testmode.confirmed = 1;
-			    }
-			    break;
+			    case TESTCMD_CONFIRMED: // activate confirmations
+				if (LMIC.dataLen == 1) {
+				    testmode.confirmed = 1;
+				}
+				break;
 
-			case TESTCMD_UNCONFIRMED: // deactivate confirmations
-			    if (LMIC.dataLen == 1) {
-				testmode.confirmed = 0;
-			    }
-			    break;
+			    case TESTCMD_UNCONFIRMED: // deactivate confirmations
+				if (LMIC.dataLen == 1) {
+				    testmode.confirmed = 0;
+				}
+				break;
 
-			case TESTCMD_LINKCHECK: // XXX undocumented?!?
-			    if (LMIC.dataLen == 1) {
-				// XXX
-			    }
-			    break;
+			    case TESTCMD_LINKCHECK: // XXX undocumented?!?
+				if (LMIC.dataLen == 1) {
+				    // XXX
+				}
+				break;
 
-			case TESTCMD_JOIN: // trigger join request
-			    if (LMIC.dataLen == 1) {
-				testmode.join = 1; // defer join since rm is considered still busy
-			    }
-			    break;
+			    case TESTCMD_JOIN: // trigger join request
+				if (LMIC.dataLen == 1) {
+				    testmode.join = 1; // defer join since rm is considered still busy
+				}
+				break;
 
-			case TESTCMD_ECHO: // modify and echo frame
-			    LMIC.pendTxData[0] = buf[0];
-			    for (int i = 1; i < LMIC.dataLen; i++) {
-				LMIC.pendTxData[i] = buf[i] + 1;
-			    }
-			    LMIC.pendTxLen = LMIC.dataLen;
-			    break;
+			    case TESTCMD_ECHO: // modify and echo frame
+				LMIC.pendTxData[0] = buf[0];
+				for (int i = 1; i < LMIC.dataLen; i++) {
+				    LMIC.pendTxData[i] = buf[i] + 1;
+				}
+				LMIC.pendTxLen = LMIC.dataLen;
+				break;
 
-			case TESTCMD_CW: // continous wave
-			    // set timeout and parameters
-			    os_setApproxTimedCallback(&testmode.timer, os_getTime() + sec2osticks((buf[1] << 8) | buf[2]), stopcw); // duration [s]
-			    LMIC.freq = ((buf[3] << 16) | (buf[4] << 8) | buf[5]) * 100; // [Hz]
-			    LMIC.txpow = buf[6]; // dBm
-			    // start continuous wave
-			    os_radio(RADIO_TXCW);
-			    return; // no uplink now
+			    case TESTCMD_CW: // continous wave
+				// set timeout and parameters
+				os_setApproxTimedCallback(&testmode.timer, os_getTime() + sec2osticks((buf[1] << 8) | buf[2]), stopcw); // duration [s]
+				LMIC.freq = ((buf[3] << 16) | (buf[4] << 8) | buf[5]) * 100; // [Hz]
+				LMIC.txpow = buf[6]; // dBm
+				// start continuous wave
+				os_radio(RADIO_TXCW);
+				return; // no uplink now
+			}
 		    }
 		} else { // test mode not active
 		    if (LMIC.dataLen == 4 && os_rlsbf4(buf) == 0x01010101) { // activate test mode

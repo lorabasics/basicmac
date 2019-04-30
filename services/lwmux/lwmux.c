@@ -26,6 +26,11 @@ static struct {
 
     unsigned int jcnt;		// join attempt counter
 
+    struct {
+        bool use_profile;       // Use ADR profile instead of network-managed
+        uint8_t dr[32];         // datarates to use
+    } adrp;
+
 #ifdef LWM_SLOTTED
     struct {
         ostime_t interval;	// beacon interval
@@ -163,12 +168,18 @@ void lwm_slotparams (u4_t freq, dr_t dr, ostime_t interval, int slotsz, int miss
 // TODO: this should be provided by the region definition
 static int max_plen (dr_t dr) {
 #if defined(CFG_eu868)
-    static const uint8_t MAX_PLEN[4] = { 51, 51, 51, 115 };
-    return (dr < 4) ? MAX_PLEN[dr] : 242;
-#elif defined(CFG_us915)
-    static const uint8_t MAX_PLEN[3] = { 11, 53, 125 };
-    return (dr < 3) ? MAX_PLEN[dr] : 242;
+    if( LMIC.region->regcode == REGCODE_EU868 && dr < 4 ) {
+        static const uint8_t MAX_PLEN[4] = { 51, 51, 51, 115 };
+        return MAX_PLEN[dr];
+    }
 #endif
+#if defined(CFG_us915)
+    if( LMIC.region->regcode == REGCODE_US915 && dr < 3 ) {
+        static const uint8_t MAX_PLEN[3] = { 11, 53, 125 };
+        return MAX_PLEN[dr];
+    }
+#endif
+    return 242;
 }
 
 static void tx_opportunity (osjob_t* j) {
@@ -177,6 +188,14 @@ static void tx_opportunity (osjob_t* j) {
     while ((job = state.queue) != NULL && job->prio >= state.runprio) {
         state.queue = job->next;
         lwm_txinfo txinfo;
+
+        if( state.adrp.use_profile ) {
+            LMIC_setAdrMode(0);
+            LMIC_setDrTxpow(state.adrp.dr[os_getRndU1() & 0x1f], KEEP_TXPOWADJ);
+        } else {
+            LMIC_setAdrMode(1);
+        }
+
         memset(&txinfo, 0, sizeof(txinfo));
         txinfo.data = LMIC.pendTxData;
         txinfo.dlen = max_plen(LMIC.datarate);
@@ -345,6 +364,22 @@ void lwm_setpriority (unsigned int priority) {
     if (state.mode != LWM_MODE_SHUTDOWN
             && !(state.flags & (FLAG_BUSY | FLAG_JOINING))) {
         tx_now();
+    }
+}
+
+void lwm_setadrprofile (const unsigned char* drlist, int n) {
+    if( drlist == NULL ) {
+        state.adrp.use_profile = false;
+    } else {
+        ASSERT(n > 0);
+        int i, j;
+        for( i = 0, j = 0; i < 32; i++, j++) {
+            if( j == n ) {
+                j = 0;
+            }
+            state.adrp.dr[i] = drlist[j] & 0xf;
+        }
+        state.adrp.use_profile = true;
     }
 }
 

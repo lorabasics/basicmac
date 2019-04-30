@@ -40,7 +40,7 @@ static void usart_on (unsigned int flag) {
     hal_disableIRQs();
     if (usart.on == 0) {
 	// disable sleep (keep clock at full speed during transfer
-	hal_disableSleep(HAL_SLEEP_MEDIUM);
+        hal_setMaxSleep(HAL_SLEEP_S0);
 	// enable peripheral clock
 	USARTx_enable();
 	// set baudrate
@@ -65,7 +65,7 @@ static void usart_off (unsigned int flag) {
 	// disable interrupts in NVIC
 	NVIC_DisableIRQ(USARTx_IRQn);
 	// re-enable sleep
-	hal_enableSleep(HAL_SLEEP_MEDIUM);
+        hal_clearMaxSleep(HAL_SLEEP_S0);
     }
     hal_enableIRQs();
 }

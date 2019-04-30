@@ -4,27 +4,23 @@
 // This file is subject to the terms and conditions defined in file 'LICENSE',
 // which is part of this source code package.
 
+#include "aes.h"
 #include "lmic.h"
+#include "peripherals.h"
 
 // RUNTIME STATE
 static struct {
     osjob_t* scheduledjobs;
     unsigned int exact;
-    u1_t randbuf[16];
+    union {
+        u4_t randwrds[4];
+        u1_t randbuf[16];
+    } /* anonymous */;
 } OS;
-
-// job flags
-enum {
-    FLAG_APPROX = (1 << 0),
-};
 
 void os_init (void* bootarg) {
     memset(&OS, 0x00, sizeof(OS));
     hal_init(bootarg);
-    // init prng
-    memcpy(OS.randbuf, __TIME__, 8);
-    os_getDevEui(OS.randbuf + 8);
-    OS.randbuf[0] = 16;
 #ifndef CFG_noradio
     radio_init();
 #endif
@@ -33,12 +29,25 @@ void os_init (void* bootarg) {
 
 // return next random byte derived from seed buffer
 // (buf[0] holds index of next byte to be returned 1-16)
+
+void rng_init (void) {
+#ifdef PERIPH_TRNG
+    trng_next(OS.randwrds, 4);
+#else
+    memcpy(OS.randbuf, __TIME__, 8);
+    os_getDevEui(OS.randbuf + 8);
+#endif
+}
+
 u1_t os_getRndU1 (void) {
     u1_t i = OS.randbuf[0];
-    ASSERT(i != 0);
-    if (i == 16) {
-        os_aes(AES_ENC, OS.randbuf, 16); // encrypt seed with any key
-        i = 0;
+    switch( i ) {
+        case 0:
+            rng_init(); // lazy initialization
+            // fall-thru
+        case 16:
+            os_aes(AES_ENC, OS.randbuf, 16); // encrypt seed with any key
+            i = 0;
     }
     u1_t v = OS.randbuf[i++];
     OS.randbuf[0] = i;
@@ -70,13 +79,37 @@ static int unlinkjob (osjob_t** pnext, osjob_t* job) {
     for( ; *pnext; pnext = &((*pnext)->next)) {
         if(*pnext == job) { // unlink
             *pnext = job->next;
-	    if ((job->flags & FLAG_APPROX) == 0) {
+	    if ((job->flags & OSJOB_FLAG_APPROX) == 0) {
 		OS.exact -= 1;
 	    }
             return 1;
         }
     }
     return 0;
+}
+
+// update schedule of extended job
+static void extendedjobcb (osxjob_t* xjob) {
+    hal_disableIRQs();
+    osxtime_t now = os_getXTime();
+    if (xjob->deadline - now > OSTIME_MAX_DIFF) {
+	// schedule intermediate callback
+	os_setTimedCallbackEx((osjob_t*) xjob, (ostime_t) (now + OSTIME_MAX_DIFF), (osjobcb_t) extendedjobcb, OSJOB_FLAG_APPROX);
+    } else {
+	// schedule final callback
+	os_setTimedCallbackEx((osjob_t*) xjob, (ostime_t) xjob->deadline, xjob->func, OSJOB_FLAG_APPROX);
+    }
+    hal_enableIRQs();
+}
+
+// schedule job far in the future (deadline may exceed max delta of ostime_t 2^31-1 ticks = 65535.99s = 18.2h)
+void os_setExtendedTimedCallback (osxjob_t* xjob, osxtime_t xtime, osjobcb_t cb) {
+    hal_disableIRQs();
+    unlinkjob(&OS.scheduledjobs, (osjob_t*) xjob);
+    xjob->func = cb;
+    xjob->deadline = xtime;
+    extendedjobcb(xjob);
+    hal_enableIRQs();
 }
 
 // clear scheduled job, return 1 if job was removed
@@ -88,17 +121,20 @@ int os_clearCallback (osjob_t* job) {
 }
 
 // schedule timed job
-static void setTimedCallback (osjob_t* job, ostime_t time, osjobcb_t cb, unsigned int flags) {
+void os_setTimedCallbackEx (osjob_t* job, ostime_t time, osjobcb_t cb, unsigned int flags) {
     osjob_t** pnext;
     hal_disableIRQs();
     // remove if job was already queued
     unlinkjob(&OS.scheduledjobs, job);
     // fill-in job
+    if( flags & OSJOB_FLAG_NOW ) {
+        time = os_getTime();
+    }
     job->deadline = time;
     job->func = cb;
     job->next = NULL;
     job->flags = flags;
-    if ((flags & FLAG_APPROX) == 0) {
+    if ((flags & OSJOB_FLAG_APPROX) == 0) {
 	OS.exact += 1;
     }
     // insert into schedule
@@ -113,19 +149,6 @@ static void setTimedCallback (osjob_t* job, ostime_t time, osjobcb_t cb, unsigne
     hal_enableIRQs();
 }
 
-// schedule immediately runnable job
-void os_setCallback (osjob_t* job, osjobcb_t cb) {
-    setTimedCallback(job, os_getTime(), cb, 0);
-}
-
-void os_setTimedCallback (osjob_t* job, ostime_t time, osjobcb_t cb) {
-    setTimedCallback(job, time, cb, 0);
-}
-
-void os_setApproxTimedCallback (xref2osjob_t job, ostime_t time, osjobcb_t cb) {
-    setTimedCallback(job, time, cb, FLAG_APPROX);
-}
-
 // execute 1 job from timer or run queue, or sleep if nothing is pending
 void os_runstep (void) {
     osjob_t* j = NULL;
@@ -135,14 +158,16 @@ void os_runstep (void) {
 	if (hal_sleep(OS.exact ? HAL_SLEEP_EXACT : HAL_SLEEP_APPROX, OS.scheduledjobs->deadline) == 0) {
 	    j = OS.scheduledjobs;
 	    OS.scheduledjobs = j->next;
-	    if ((j->flags & FLAG_APPROX) == 0) {
+	    if ((j->flags & OSJOB_FLAG_APPROX) == 0) {
 		OS.exact -= 1;
 	    }
 	}
     } else { // nothing pending
 	hal_sleep(HAL_SLEEP_FOREVER, 0);
     }
-    hal_enableIRQs();
+    if( j == NULL || (j->flags & OSJOB_FLAG_IRQDISABLED) == 0) {
+        hal_enableIRQs();
+    }
     if (j) { // run job callback
 	hal_watchcount(30); // max 60 sec
 	j->func(j);

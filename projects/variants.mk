@@ -5,6 +5,8 @@
 
 VARIANTS ?= eu868
 
+RVARIANT	:= $(VARIANT)
+
 ifeq ($(VARIANT),)
     VTARGET	:= variants
     VARIANT	:= $(firstword $(DEFAULT_VARIANT) $(VARIANTS))
@@ -15,47 +17,17 @@ endif
 BUILDDIR	= $(BUILDDIR_PFX)$(VARIANT)
 VTARGETS	:= $(addprefix variant-,$(VARIANTS))
 
-EMPTY		:=
-SPACE		:= $(EMPTY) $(EMPTY)
+# settings for "well-known" variants
 
-VPARTS		:= $(subst -, ,$(VARIANT))
-V_REGION	:= $(lastword $(VPARTS))
-V_NONREGION	:= $(addprefix _,$(subst $(SPACE),_,$(filter-out $(V_REGION),$(VPARTS))))
+REGIONS.eu868	:= eu868
+REGIONS.us915	:= us915
 
+REGIONS.hybrid	?= eu868 us915
 
-ifneq (,$(filter eu868,$(VPARTS)))
-LMICCFG	+= eu868
-HWIDext := 868
+ifneq (,$(REGIONS.$(VARIANT)))
+    REGIONS = $(REGIONS.$(VARIANT))
 endif
 
-ifneq (,$(filter us915,$(VPARTS)))
-LMICCFG	+= us915
-HWIDext := 915
+ifneq (,$(TARGET.$(VARIANT)))
+    TARGET = $(TARGET.$(VARIANT))
 endif
-
-ifneq (,$(filter as923,$(VPARTS)))
-LMICCFG	+= as923
-HWIDext := 915
-endif
-
-ifneq (,$(filter il915,$(VPARTS)))
-LMICCFG	+= il915
-HWIDext := 915
-endif
-
-ifneq (,$(filter kr920,$(VPARTS)))
-LMICCFG	+= kr920
-HWIDext := 915
-endif
-
-ifneq (,$(filter au915,$(VPARTS)))
-LMICCFG	+= au915
-HWIDext := 915
-endif
-
-ifneq (,$(filter uftonly,$(VPARTS)))
-DEFS   += -DTABS_UFT_ONLY
-UNDEFS += -DTABS_UFT_SLOW -DTABS_UFT_FAST
-endif
-
-HWID.$(VARIANT)	?= $(HWID.$(HWIDext))

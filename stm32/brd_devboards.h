@@ -16,25 +16,28 @@
 #define GPIO_DIO1	BRD_GPIO(PORT_B, 3)
 #define GPIO_DIO2	BRD_GPIO(PORT_B, 5)
 #define GPIO_NSS	BRD_GPIO(PORT_B, 6)
+
 #elif defined(CFG_sx1276mbed)
+
 #define BRD_sx1276_radio
 #define GPIO_DIO0	BRD_GPIO(PORT_A, 10)
 #define GPIO_DIO1	BRD_GPIO(PORT_B, 3)
 #define GPIO_DIO2	BRD_GPIO(PORT_B, 5)
 #define GPIO_NSS	BRD_GPIO(PORT_B, 6)
 #define GPIO_TX		BRD_GPIO(PORT_C, 1)
-#elif defined(CFG_sx1261mbed)
+
+#elif defined(CFG_sx1261mbed) || defined(CFG_sx1262mbed)
+
+#if defined(CFG_sx1261mbed)
 #define BRD_sx1261_radio
-#define GPIO_DIO1	BRD_GPIO(PORT_B, 4)
-#define GPIO_BUSY	BRD_GPIO(PORT_B, 3)
-#define GPIO_NSS	BRD_GPIO(PORT_A, 8)
-#define GPIO_TXRX_EN	BRD_GPIO(PORT_A, 9)
 #elif defined(CFG_sx1262mbed)
 #define BRD_sx1262_radio
-#define GPIO_DIO1	BRD_GPIO(PORT_B, 4)
+#endif
+#define GPIO_DIO1	BRD_GPIO_AF_EX(PORT_B, 4, 4, BRD_GPIO_CHAN(1))
 #define GPIO_BUSY	BRD_GPIO(PORT_B, 3)
 #define GPIO_NSS	BRD_GPIO(PORT_A, 8)
 #define GPIO_TXRX_EN	BRD_GPIO(PORT_A, 9)
+
 #else
 #error "Missing radio configuration"
 #endif
@@ -62,7 +65,7 @@
 #elif defined(CFG_b_l072Z_lrwan1_board)
 
 #define GPIO_RST	BRD_GPIO(PORT_C, 0)
-#define GPIO_DIO0	BRD_GPIO(PORT_B, 4)
+#define GPIO_DIO0	BRD_GPIO_AF_EX(PORT_B, 4, 4, BRD_GPIO_CHAN(1))
 #define GPIO_DIO1	BRD_GPIO(PORT_B, 1)
 #define GPIO_DIO2	BRD_GPIO(PORT_B, 0)
 #define GPIO_DIO3	BRD_GPIO(PORT_C, 13)

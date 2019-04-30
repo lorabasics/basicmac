@@ -4,7 +4,7 @@
 // This file is subject to the terms and conditions defined in file 'LICENSE',
 // which is part of this source code package.
 
-#include "oslmic.h"
+#include "aes.h"
 
 
 // global area for passing parameters (aux, key) and for storing round keys
@@ -16,7 +16,7 @@ u4_t AESKEY[11*16/sizeof(u4_t)];
 
 #include "boot/bootloader.h"
 
-u4_t os_aes (u1_t mode, xref2u1_t buf, u2_t len) {
+u4_t os_aes (u1_t mode, u1_t* buf, u2_t len) {
     return HAL_boottab->aes(mode, buf, len, AESKEY, AESAUX);
 }
 
@@ -236,7 +236,7 @@ static void aesroundkeys () {
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
-u4_t os_aes (u1_t mode, xref2u1_t buf, u2_t len) {
+u4_t os_aes (u1_t mode, u1_t* buf, u2_t len) {
         
         aesroundkeys();
 

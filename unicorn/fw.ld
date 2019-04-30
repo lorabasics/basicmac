@@ -1,3 +1,8 @@
+/*  __ __   ___ __ __    _________________________________
+   (_ |_ |V| | |_ /  |_| (C) 2017-2018 Semtech Corporation
+   __)|__| | | |__\__| |               All rights reserved
+*/
+
 SECTIONS {
     .text : {
 	. = ALIGN(4);
@@ -11,9 +16,6 @@ SECTIONS {
     .data : {
 	. = ALIGN(4);
 	_sdata = .;
-	*(.fastcode)
-	*(.fastcode*)
-	. = ALIGN(4);
 	*(.data)
 	*(.data*)
 	. = ALIGN(4);

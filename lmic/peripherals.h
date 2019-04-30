@@ -71,4 +71,21 @@ unsigned int crc32 (void* ptr, int nwords);
 
 #endif
 
+#ifdef PERIPH_SHA256
+// ------------------------------------------------
+// SHA-256 engine
+
+void sha256 (uint32_t* hash, const uint8_t* msg, uint32_t len);
+
+#endif
+
+
+#ifdef PERIPH_TRNG
+// ------------------------------------------------
+// True RNG engine
+
+void trng_next (uint32_t* dest, int count);
+
+#endif
+
 #endif

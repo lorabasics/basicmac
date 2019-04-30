@@ -7,7 +7,6 @@
 #include "board.h"
 #include "hw.h"
 #include "lmic.h"
-#include "backtrace.h"
 
 #if defined(BRD_sx1261_radio) || defined(BRD_sx1262_radio)
 
@@ -130,7 +129,7 @@
 #define IRQ_TIMEOUT		(1 << 9)
 #define IRQ_ALL 		0x3FF
 
-#define LORA_TXDONE_FIXUP       us2osticks(43) // XXX
+#define LORA_TXDONE_FIXUP       us2osticks(269) // determined by lwtestapp using device pin wired to sx1301 pps...
 #define FSK_TXDONE_FIXUP        us2osticks(0) // XXX
 #define FSK_RXDONE_FIXUP        us2osticks(0) // XXX
 
@@ -304,10 +303,15 @@ static void SetTxContinuousWave (void) {
     writecmd(CMD_SETTXCONTINUOUSWAVE, NULL, 0);
 }
 
-// set radio in receive mode (abort after timeout [1/64ms], or with timeout=0 after frame received)
+// set radio in receive mode (abort after timeout [1/64ms], or with timeout=0 after frame received, or continuous with timeout=FFFFFF)
 static void SetRx (uint32_t timeout64ms) {
     uint8_t timeout[3] = { timeout64ms >> 16, timeout64ms >> 8, timeout64ms };
     writecmd(CMD_SETRX, timeout, 3);
+}
+
+// set radio in frequency synthesis mode
+static void SetFs (void) {
+    writecmd(CMD_SETFS, NULL, 0);
 }
 
 // set radio to PACKET_TYPE_LORA or PACKET_TYPE_FSK mode
@@ -354,7 +358,7 @@ static void SetModulationParamsLora (u2_t rps) {
     param[0] = getSf(rps) + 6; // SF (sf7=1)
     param[1] = getBw(rps) + 4; // BW (bw125=0)
     param[2] = getCr(rps) + 1; // CR (cr45=0)
-    param[3] = (getSf(LMIC.rps) - getBw(LMIC.rps) >= 5); // low-data-rate-opt (symbol time equal or above 16.38 ms)
+    param[3] = enDro(rps);     // low-data-rate-opt (symbol time equal or above 16.38 ms)
     writecmd(CMD_SETMODULATIONPARAMS, param, 4);
 }
 
@@ -446,27 +450,23 @@ static void SetDioIrqParams (uint16_t mask) {
 // set tx power (in dBm)
 static void SetTxPower (s1_t pw) {
 #if defined(BRD_sx1261_radio)
-    // set over-current protection
-    WriteReg(REG_OCPCONFIG, 0x18); // max 60mA
-    // set pa config
-    uint8_t paconfig[4] = { (pw > 14) ? 0x06 : 0x04, 0x00, 0x01, 0x01 };
+    // low power PA: -17 ... +14 dBm
     if (pw > 14) pw = 14;
-    if (pw < -3) pw = -3;
+    if (pw < -17) pw = -17;
+    // set PA config (and reset OCP to 60mA)
+    writecmd(CMD_SETPACONFIG, (const uint8_t[]) { 0x04, 0x00, 0x01, 0x01 }, 4);
 #elif defined(BRD_sx1262_radio)
-    // set over-current protection
-    WriteReg(REG_OCPCONFIG, 0x38); // max 140mA
-    // set pa config
-    uint8_t paconfig[4] = { 0x04, 0x07, 0x00, 0x01 };
+    // high power PA: -9 ... +22 dBm
     if (pw > 22) pw = 22;
-    if (pw < -3) pw = -3;
+    if (pw < -9) pw = -9;
+    // set PA config (and reset OCP to 140mA)
+    writecmd(CMD_SETPACONFIG, (const uint8_t[]) { 0x04, 0x07, 0x00, 0x01 }, 4);
 #endif
-    writecmd(CMD_SETPACONFIG, paconfig, 4);
-
     // set tx params
-    uint8_t pwramp[2];
-    pwramp[0] = (uint8_t) pw;
-    pwramp[1] = 0x04; // ramp time 200us
-    writecmd(CMD_SETTXPARAMS, pwramp, 2);
+    uint8_t txparam[2];
+    txparam[0] = (uint8_t) pw;
+    txparam[1] = 0x04; // ramp time 200us
+    writecmd(CMD_SETTXPARAMS, txparam, 2);
 }
 
 // set sync word for LoRa
@@ -514,6 +514,7 @@ static uint32_t GetRandom (void) {
 }
 
 void radio_sleep (void) {
+    // cache sleep state to avoid unneccessary wakeup (waking up from cold sleep takes about 4ms)
     if (state.sleeping == 0) {
 	SetSleep(SLEEP_COLD);
 	state.sleeping = 1;
@@ -528,7 +529,7 @@ static void txlora (void) {
     SetRfFrequency(LMIC.freq);
     SetModulationParamsLora(LMIC.rps);
     SetPacketParamsLora(LMIC.rps, LMIC.dataLen, 0);
-    SetTxPower(LMIC.txpow + LMIC.txPowAdj);
+    SetTxPower(LMIC.txpow + LMIC.txPowAdj + TX_ERP_ADJ); // bandpow + MACadj/APIadj + ERPadj
     SetSyncWordLora(0x3444);
     WriteFifo(LMIC.frame, LMIC.dataLen);
     ClearIrqStatus(IRQ_ALL);
@@ -556,7 +557,7 @@ static void txfsk (void) {
     SetCrc16(0x1D0F, 0x1021); // CCITT
     SetWhiteningSeed(0x01FF);
     SetSyncWordFsk(0xC194C1);
-    SetTxPower(LMIC.txpow + LMIC.txPowAdj);
+    SetTxPower(LMIC.txpow + LMIC.txPowAdj + TX_ERP_ADJ); // bandpow + MACadj/APIadj + ERPadj
     WriteFifo(LMIC.frame, LMIC.dataLen);
     ClearIrqStatus(IRQ_ALL);
     SetDioIrqParams(IRQ_TXDONE | IRQ_TIMEOUT);
@@ -577,7 +578,7 @@ static void txcw (void) {
     SetDIO2AsRfSwitchCtrl(1);
     SetStandby(STDBY_RC);
     SetRfFrequency(LMIC.freq);
-    SetTxPower(LMIC.txpow + LMIC.txPowAdj);
+    SetTxPower(LMIC.txpow + LMIC.txPowAdj + TX_ERP_ADJ); // bandpow + MACadj/APIadj + ERPadj
     ClearIrqStatus(IRQ_ALL);
 
     // antenna switch / power accounting
@@ -620,6 +621,9 @@ static void rxfsk (bool rxcontinuous) {
     SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT);
     ClearIrqStatus(IRQ_ALL);
 
+    // enter frequency synthesis mode (become ready for immediate rx)
+    SetFs();
+
     // enable IRQs in HAL
     hal_irqmask_set(HAL_IRQMASK_DIO1);
 
@@ -660,9 +664,13 @@ static void rxlora (bool rxcontinuous) {
     SetPacketParamsLora(LMIC.rps, 255, !LMIC.noRXIQinversion);
     SetSyncWordLora(0x3444);
     StopTimerOnPreamble(0);
-    SetLoRaSymbNumTimeout(LMIC.rxsyms);
+    SetLoRaSymbNumTimeout((LMIC.rxsyms < 6) ? 6 : LMIC.rxsyms); // (MacParamsDefaults.MinRxSymbols = 6)
     SetDioIrqParams(IRQ_RXDONE | IRQ_TIMEOUT);
+
     ClearIrqStatus(IRQ_ALL);
+
+    // enter frequency synthesis mode (become ready for immediate rx)
+    SetFs();
 
     // enable IRQs in HAL
     hal_irqmask_set(HAL_IRQMASK_DIO1);
@@ -690,6 +698,10 @@ static void rxlora (bool rxcontinuous) {
 	SetRx(0); // (infinite, timeout set via SetLoRaSymbNumTimeout)
     }
     hal_enableIRQs();
+}
+
+void radio_cca () {
+    LMIC.rssi = -127; //XXX:TBD
 }
 
 void radio_startrx (bool rxcontinuous) {
@@ -736,8 +748,8 @@ void radio_init (void) {
     hal_enableIRQs();
 }
 
-// called by radio irq job/stub
-void radio_irq_process (ostime_t irqtime) {
+// (run by irqjob)
+bool radio_irq_process (ostime_t irqtime, u1_t diomask) {
     uint16_t irqflags = GetIrqStatus();
 
     // dispatch modem
@@ -823,6 +835,9 @@ void radio_irq_process (ostime_t irqtime) {
 
     // clear IRQ flags
     ClearIrqStatus(IRQ_ALL);
+
+    // radio operation completed
+    return true;
 }
 
 #endif

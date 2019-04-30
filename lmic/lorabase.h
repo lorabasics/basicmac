@@ -7,10 +7,6 @@
 #ifndef _lorabase_h_
 #define _lorabase_h_
 
-// ================================================================================
-// BEG: Keep in sync with lorabase.hpp
-//
-
 enum _cr_t { CR_4_5=0, CR_4_6, CR_4_7, CR_4_8 };
 enum _sf_t { FSK=0, SF7, SF8, SF9, SF10, SF11, SF12, SFrfu };
 enum _bw_t { BW125=0, BW250, BW500, BWrfu };
@@ -20,16 +16,12 @@ typedef u1_t bw_t;
 typedef u1_t dr_t;
 // Radio parameter set (encodes SF/BW/CR/IH/NOCRC)
 typedef u2_t rps_t;
-TYPEDEF_xref2rps_t;
+typedef u2_t drmap_t;
+typedef s4_t freq_t;
+typedef s1_t eirp_t;
 
+enum { ILLEGAL_DR  = 0xFF };
 enum { ILLEGAL_RPS = 0xFF };
-enum { DR_PAGE_EU868 = 0x00 };
-enum { DR_PAGE_US915 = 0x10 };
-enum { DR_PAGE_AU915 = 0x20 };
-enum { DR_PAGE_AS923 = 0x30 };
-enum { DR_PAGE_CN470 = 0x40 };
-enum { DR_PAGE_IL915 = 0x50 };
-enum { DR_PAGE_KR920 = 0x60 };
 
 // Global maximum frame length
 enum { BCN_PREAMBLE_LEN  = 10 };  // length in symbols - actual time depends on DR
@@ -62,323 +54,9 @@ enum {
     ADR_ACK_DELAY        = 32,
 };
 
-#if defined(CFG_eu868) // ==============================================
-
-enum _dr_eu868_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_SF7B, DR_FSK, DR_NONE };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12, DR_UPFASTEST = DR_FSK };
-enum { DR_DNSLOWEST = DR_SF12, DR_DNFASTEST = DR_FSK };
-enum { DR_PAGE = DR_PAGE_EU868 };
-
-// Default frequency plan for EU 868MHz ISM band
-// Bands:
-//  g1 :   1%  14dBm  
-//  g2 : 0.1%  14dBm  
-//  g3 :  10%  27dBm  
-//                 freq             band     datarates
-enum { EU868_F1 = 868100000,      // g1   SF7-12 
-       EU868_F2 = 868300000,      // g1   SF7-12 FSK SF7/250         
-       EU868_F3 = 868500000,      // g1   SF7-12         
-       EU868_F4 = 868850000,      // g2   SF7-12         
-       EU868_F5 = 869050000,      // g2   SF7-12         
-       EU868_F6 = 869525000,      // g3   SF7-12         
-       EU868_J4 = 864100000,      // g2   SF7-12  used during join
-       EU868_J5 = 864300000,      // g2   SF7-12   ditto
-       EU868_J6 = 864500000,      // g2   SF7-12   ditto
-};
-enum { FREQ_MIN = 863000000,
-       FREQ_MAX = 870000000 };
-
-enum { MIN_CHNLS         = 3 };
-enum { MAX_CHNLS         = 16 };
-enum { MAX_EIRP          = 16 };
-enum { FREQ_PING         = EU868_F6 };  // default ping freq
-enum { DR_PING           = DR_SF12 };   // default ping DR (same as DNW2)
-enum { CHNL_DNW2         = 5 };
-enum { FREQ_DNW2         = EU868_F6 };
-enum { DR_DNW2           = DR_SF12 };
-enum { NCHNL_BCN         = 1 };
-enum { FREQ_BCN          = EU868_F6 };
-enum { DR_BCN            = DR_SF9 };
-enum { AIRTIME_BCN       = 152576 };  // micros / airtime(sf=9,bw=125,plen=17,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format EU SF9/125kHz
-    OFF_BCN_TIME     = 2,
-    OFF_BCN_INFO     = 8,
-    LEN_BCN          = 17
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr - off, DR_DNFASTEST); }
-
-#elif defined(CFG_as923) // ==============================================
-
-#define CFG_eu868 1
-
-enum _dr_eu868_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_SF7B, DR_FSK, DR_NONE };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12, DR_UPFASTEST = DR_FSK };
-enum { DR_DNSLOWEST = DR_SF12, DR_DNFASTEST = DR_FSK };
-enum { DR_PAGE = DR_PAGE_AS923 };
-
-// Default frequency plan for AS923 ISM band
-//                 freq             band     datarates
-enum { AS923_F1 = 923200000,
-       AS923_F2 = 923400000,
-};
-enum { FREQ_MIN = 920000000,
-       FREQ_MAX = 928000000 };
-
-enum { MIN_CHNLS         = 2 };
-enum { MAX_CHNLS         = 16 };
-enum { MAX_EIRP          = 16 };
-enum { FREQ_PING         = AS923_F2 };     // default ping freq
-enum { FREQ_DNW2         = AS923_F1 };
-enum { DR_PING           = DR_SF10 };      // default ping DR (same as DNW2)
-enum { DR_DNW2           = DR_SF10 };
-enum { NCHNL_BCN         = 1 };
-enum { FREQ_BCN          = AS923_F2 };
-enum { DR_BCN            = DR_SF9 };
-enum { AIRTIME_BCN       = 152576 };       // micros / airtime(sf=9,bw=125,plen=17,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format AS SF9/125kHz
-    OFF_BCN_TIME     = 2,
-    OFF_BCN_INFO     = 8,
-    LEN_BCN          = 17
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr - off, DR_DNFASTEST); }
-
-#elif defined(CFG_il915) // ==============================================
-
-#define CFG_eu868 1
-
-enum _dr_eu868_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_SF7B, DR_FSK, DR_NONE };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12, DR_UPFASTEST = DR_FSK };
-enum { DR_DNSLOWEST = DR_SF12, DR_DNFASTEST = DR_FSK };
-enum { DR_PAGE = DR_PAGE_IL915 };
-
-// Default frequency plan for IL915 ISM band
-//                 freq             band     datarates
-enum { IL915_F1 = 915700000,
-       IL915_F2 = 915900000,
-       IL915_F3 = 916100000,
-       IL915_DN = 916300000,
-};
-enum { FREQ_MIN = 915500000,
-       FREQ_MAX = 916500000 };
-
-enum { MIN_CHNLS         = 3 };
-enum { MAX_CHNLS         = 16 };
-enum { MAX_EIRP          = 14 };
-enum { FREQ_PING         = IL915_DN };     // default ping freq
-enum { FREQ_DNW2         = IL915_DN };
-enum { DR_PING           = DR_SF12 };      // default ping DR (same as DNW2)
-enum { DR_DNW2           = DR_SF12 };
-enum { NCHNL_BCN         = 1 };
-enum { FREQ_BCN          = IL915_DN };
-enum { DR_BCN            = DR_SF9 };
-enum { AIRTIME_BCN       = 152576 };       // micros / airtime(sf=9,bw=125,plen=17,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format AS SF9/125kHz
-    OFF_BCN_TIME     = 2,
-    OFF_BCN_INFO     = 8,
-    LEN_BCN          = 17
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr - off, DR_DNFASTEST); }
-
-#elif defined(CFG_kr920) // ==============================================
-
-#define CFG_eu868 1
-
-enum _dr_eu868_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_NONE };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12, DR_UPFASTEST = DR_SF7 };
-enum { DR_DNSLOWEST = DR_SF12, DR_DNFASTEST = DR_SF7 };
-enum { DR_PAGE = DR_PAGE_KR920 };
-
-// Default frequency plan for KR920 ISM band
-//                 freq             band     datarates
-enum { KR920_F1 = 922100000,
-       KR920_F2 = 922300000,
-       KR920_F3 = 922500000,
-       KR920_DN = 921900000,
-       KR920_BC = 923100000,
-};
-enum { FREQ_MIN = 920900000,
-       FREQ_MAX = 923300000 };
-
-enum { MIN_CHNLS         = 3 };
-enum { MAX_CHNLS         = 16 };
-enum { MAX_EIRP          = 14 };
-enum { FREQ_PING         = KR920_BC };     // default ping freq
-enum { FREQ_DNW2         = KR920_DN };
-enum { DR_PING           = DR_SF12 };      // default ping DR (same as DNW2)
-enum { DR_DNW2           = DR_SF12 };
-enum { NCHNL_BCN         = 1 };
-enum { FREQ_BCN          = KR920_BC };
-enum { DR_BCN            = DR_SF9 };
-enum { AIRTIME_BCN       = 152576 };       // micros / airtime(sf=9,bw=125,plen=17,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format AS SF9/125kHz
-    OFF_BCN_TIME     = 2,
-    OFF_BCN_INFO     = 8,
-    LEN_BCN          = 17
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr - off, DR_DNFASTEST); }
-
-#elif defined(CFG_us915) // =========================================
-
-enum _dr_us915_t { DR_SF10=0, DR_SF9, DR_SF8, DR_SF7, DR_SF8C, DR_NONE,
-                   // Devices behind a router:
-                   DR_SF12CR=8, DR_SF11CR, DR_SF10CR, DR_SF9CR, DR_SF8CR, DR_SF7CR };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF10,   DR_UPFASTEST = DR_SF8C };
-enum { DR_DNSLOWEST = DR_SF12CR, DR_DNFASTEST = DR_SF7CR };
-enum { DR_PAGE = DR_PAGE_US915 };
-
-// Default frequency plan for US 915MHz
-enum { US915_125kHz_UPFBASE = 902300000,
-       US915_125kHz_UPFSTEP =    200000,
-       US915_500kHz_UPFBASE = 903000000,
-       US915_500kHz_UPFSTEP =   1600000,
-       US915_500kHz_DNFBASE = 923300000,
-       US915_500kHz_DNFSTEP =    600000
-};
-enum { BCN_FREQ_BASE = 923300000,
-       BCN_FREQ_STEP =    600000
-};
-enum { FREQ_MIN = 902000000,
-       FREQ_MAX = 928000000
-};
-
-enum { MIN_CHNLS         = 72 };
-enum { MAX_CHNLS         = 72 };
-enum { MAX_EIRP          = 30 };
-enum { FREQ_PING         = 0 }; // default ping freq - 0 => default rotating
-enum { DR_PING           = DR_SF12CR };       // default ping DR (same as DNW2)
-enum { FREQ_DNW2         = US915_500kHz_DNFBASE + 0*US915_500kHz_DNFSTEP };
-enum { DR_DNW2           = DR_SF12CR };
-enum { NCHNL_BCN         = 8 }; // default scheme hops over 8 channels
-enum { FREQ_BCN          = 0 };
-enum { DR_BCN            = DR_SF12CR };
-enum { AIRTIME_BCN       = 305152 };  // micros / airtime(sf=12,bw=500,plen=23,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format US SF12/500kHz
-    OFF_BCN_TIME     = 5,
-    OFF_BCN_INFO     = 11,
-    LEN_BCN          = 23
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr + (DR_SF10CR - DR_SF10) - off, DR_DNFASTEST); }
-
-#elif defined(CFG_au915) // =========================================
-
-#define CFG_us915 1   // make the code behave like US
-
-enum _dr_us915_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_SF8C, DR_NONE,
-                   // Devices behind a router:
-                   DR_SF12CR=8, DR_SF11CR, DR_SF10CR, DR_SF9CR, DR_SF8CR, DR_SF7CR };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12,   DR_UPFASTEST = DR_SF8C };
-enum { DR_DNSLOWEST = DR_SF12CR, DR_DNFASTEST = DR_SF7CR };
-enum { DR_PAGE = DR_PAGE_AU915 };
-
-// Default frequency plan for US 915MHz
-enum { US915_125kHz_UPFBASE = 915200000,
-       US915_125kHz_UPFSTEP =    200000,
-       US915_500kHz_UPFBASE = 915900000,
-       US915_500kHz_UPFSTEP =   1600000,
-       US915_500kHz_DNFBASE = 923300000,
-       US915_500kHz_DNFSTEP =    600000
-};
-enum { BCN_FREQ_BASE = 923300000,
-       BCN_FREQ_STEP =    600000
-};
-enum { FREQ_MIN = 915000000,
-       FREQ_MAX = 928000000
-};
-enum { MIN_CHNLS         = 72 };
-enum { MAX_CHNLS         = 72 };
-enum { MAX_EIRP          = 30 };
-enum { FREQ_PING         = 0 }; // default ping freq - 0 => default rotating
-enum { DR_PING           = DR_SF10CR };       // default ping DR (same as DNW2)
-enum { FREQ_DNW2         = US915_500kHz_DNFBASE + 0*US915_500kHz_DNFSTEP };
-enum { DR_DNW2           = DR_SF12CR };
-enum { NCHNL_BCN         = 8 }; // default scheme hops over 8 channels
-enum { FREQ_BCN          = 0 };
-enum { DR_BCN            = DR_SF10CR };
-enum { AIRTIME_BCN       = 76288 };  // micros / airtime(sf=10,bw=500,plen=19,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format AU SF10/500kHz
-    OFF_BCN_TIME     = 3,
-    OFF_BCN_INFO     = 9,
-    LEN_BCN          = 19
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr + (DR_SF12CR - DR_SF12) - off, DR_DNFASTEST); }
-
-#elif defined(CFG_cn470) // =========================================
-
-#define CFG_us915 1   // make the code behave like US
-
-enum _dr_us915_t { DR_SF12=0, DR_SF11, DR_SF10, DR_SF9, DR_SF8, DR_SF7, DR_NONE };
-enum { DR_MAX125 = DR_SF7 };  // fastest 125kHz
-enum { DR_UPSLOWEST = DR_SF12, DR_UPFASTEST = DR_SF7 };
-enum { DR_DNSLOWEST = DR_SF12, DR_DNFASTEST = DR_SF7 };
-enum { DR_PAGE = DR_PAGE_CN470 };
-
-// Default frequency plan for US 915MHz
-enum { CN470_125kHz_UPFBASE = 470200000,
-       CN470_125kHz_UPFSTEP =    200000,
-       CN470_125kHz_DNFBASE = 500300000,
-       CN470_125kHz_DNFSTEP =    200000
-};
-enum { BCN_FREQ_BASE = 508300000,
-       BCN_FREQ_STEP =    200000
-};
-enum { FREQ_MIN = 470000000,
-       FREQ_MAX = 510000000
-};
-enum { MIN_CHNLS         = 96 };
-enum { MAX_CHNLS         = 96 };
-enum { MAX_EIRP          = 12 };
-enum { FREQ_PING         =  0 }; // default ping freq - 0 => default rotating
-enum { DR_PING           = DR_SF12 };       // default ping DR (same as DNW2)
-enum { FREQ_DNW2         = 505300000 };
-enum { DR_DNW2           = DR_SF12 };
-enum { NCHNL_BCN         = 8 }; // default scheme hops over 8 channels
-enum { FREQ_BCN          = 0 };
-enum { DR_BCN            = DR_SF10 };
-enum { AIRTIME_BCN       = 305152 };  // micros / airtime(sf=10,bw=125,plen=19,crc=0,ih=1,npreamble=10)
-
-enum {
-    // Beacon layout format CN SF10/125kHz
-    OFF_BCN_TIME     = 3,
-    OFF_BCN_INFO     = 9,
-    LEN_BCN          = 19
-};
-
-inline rps_t updr2dndr(dr_t dr, s1_t off) { return (dr_t)os_minmax(DR_DNSLOWEST, (s1_t)dr - off, DR_DNFASTEST); }
-
-#endif // ===================================================
-
-enum {
-    // Convenience offsets derived from region specific beacon layout
-    // RFU fields are not mapped out - they are not checked
-    OFF_BCN_CRC1 = OFF_BCN_INFO-2,
-    OFF_BCN_LAT  = OFF_BCN_INFO+1,
-    OFF_BCN_LON  = OFF_BCN_INFO+4,
-    OFF_BCN_CRC2 = LEN_BCN-2,
-};
+// Note: Python simul needs macros here since MAX_DYN_CHNLS is used as array size
+#define MIN_DYN_CHNLS  3
+#define MAX_DYN_CHNLS 16
 
 
 enum {
@@ -456,6 +134,30 @@ enum {
     NWKID_BITS = 7
 };
 
+// New identifiers for MAC commands (in line with standard)
+enum {
+    MC_Reset         =  1, // Conf/Ind
+    MC_LinkCheck     =  2, // Req/Ans
+    MC_LinkADR       =  3, // Req/Ans
+    MC_DutyCycle     =  4, // Req/Ans
+    MC_RXParamSetup  =  5, // Req/Ans
+    MC_DevStatus     =  6, // Req/Ans
+    MC_NewChannel    =  7, // Req/Ans
+    MC_RXTimingSetup =  8, // Req/Ans
+    MC_TXParamSetup  =  9, // Req/Ans
+    MC_DlChannel     = 10, // Req/Ans
+    MC_Rekey         = 11, // Ind/Conf
+    MC_ADRParamSetup = 12, // Req/Ans
+    MC_DeviceTime    = 13, // Req/Ans
+    MC_ForcRejoin    = 14, // Req
+    MC_RejoinParam   = 15, // Req/Ans
+    MC_PingSlotInfo  = 16, // Req/Ans
+    MC_PingSlotChnl  = 17, // Req/Ans
+    MC_BeaconTiming  = 18, // Req/Ans
+    MC_BeaconFreq    = 19, // Req/Ans
+    MC_DeviceMode    = 32, // Ind/Conf
+};
+    
 // MAC uplink commands   downwlink too
 enum {
     // Class A               1=1.1, - 1.0.2
@@ -493,7 +195,7 @@ enum {
     MCMD_RKEY_CNF = 0x0B, // - reset confirmation : u1: opt1, [n opts...]
     MCMD_ADRP_REQ = 0x0C, // - adr params         : u1: 7-4: limit_exp, 3-0: delay_exp
     MCMD_TIME_ANS = 0x0D, // - time answer        : u4:epoch_secs, u1:fracs
-    // Class B		     - 
+    // Class B		     -
     MCMD_PITV_ANS = 0x10, // - ping interval ack  : -
     MCMD_PNGC_REQ = 0x11, // - set ping freq/dr   : u3: freq, u1:7-4:RFU/3-0:datarate
     MCMD_BCNI_ANS = 0x12, // - next beacon start  : u2: delay(in TUNIT millis), u1:channel -- DEPRECATED
@@ -597,19 +299,14 @@ inline rps_t makeRps (sf_t sf, bw_t bw, cr_t cr, int ih, int nocrc) {
     return sf | (bw<<3) | (cr<<5) | (nocrc?(1<<7):0) | ((ih&0xFF)<<8);
 }
 #define MAKERPS(sf,bw,cr,ih,nocrc) ((rps_t)((sf) | ((bw)<<3) | ((cr)<<5) | ((nocrc)?(1<<7):0) | ((ih&0xFF)<<8)))
+#define LWUPDR(sf,bw) ((u1_t)MAKERPS((sf),(bw),CR_4_5,0,0))
+#define LWDNDR(sf,bw) ((u1_t)MAKERPS((sf),(bw),CR_4_5,0,1))
 // Two frames with params r1/r2 would interfere on air: same SFx + BWx 
 inline int sameSfBw(rps_t r1, rps_t r2) { return ((r1^r2)&0x1F) == 0; }
 
-extern const u1_t _DR2RPS_CRC[];
-inline rps_t updr2rps (dr_t dr) { return (rps_t)_DR2RPS_CRC[dr+1]; }
-inline rps_t dndr2rps (dr_t dr) { return setNocrc(updr2rps(dr),1); }
-inline int isFasterDR (dr_t dr1, dr_t dr2) { return dr1 > dr2; }
-inline int isSlowerDR (dr_t dr1, dr_t dr2) { return dr1 < dr2; }
-inline dr_t  incDR    (dr_t dr) { return _DR2RPS_CRC[dr+2]==ILLEGAL_RPS ? dr : (dr_t)(dr+1); } // increase data rate
-inline dr_t  decDR    (dr_t dr) { return _DR2RPS_CRC[dr  ]==ILLEGAL_RPS ? dr : (dr_t)(dr-1); } // decrease data rate
-inline dr_t  assertDR (dr_t dr) { return _DR2RPS_CRC[dr+1]==ILLEGAL_RPS ? DR_UPFASTEST : dr; } // force into a valid DR
-inline bit_t validDR  (dr_t dr) { return _DR2RPS_CRC[dr+1]!=ILLEGAL_RPS; } // in range
-inline dr_t  lowerDR  (dr_t dr, u1_t n) { while(n--){dr=decDR(dr);} return dr; } // decrease data rate by n steps
+// return 1 for low data rate optimize should be enabled (symbol time equal or above 16.384 ms) else 0
+// Must be enabled for: SF11/BW125, SF12/BW125, SF12/BW250
+inline int enDro (rps_t params) { return (int)getSf(params) - getBw(params) >= SF11; }
 
 //
 // BEG: Keep in sync with lorabase.hpp

@@ -46,7 +46,7 @@ void leds_init (void) {
 
 #if defined(BRD_LED_TIM)
 static void pwm_set_gpio (unsigned int gpio, bool enable, bool pulse, unsigned int ccr) {
-    unsigned int ch = BRD_GPIO_PWM_GET_CHAN(gpio) - 1;
+    unsigned int ch = BRD_GPIO_GET_CHAN(gpio) - 1;
     ASSERT(ch < 4);
 
     unsigned int state0 = pwm.state;
@@ -70,7 +70,7 @@ static void pwm_set_gpio (unsigned int gpio, bool enable, bool pulse, unsigned i
     if (state1) {
 	if (state0 == 0) {
 	    TIMx_enable();			// enable peripheral clock
-	    hal_disableSleep(HAL_SLEEP_MEDIUM);	// disable sleep (keep clock at full speed)
+            hal_setMaxSleep(HAL_SLEEP_S0);      // disable sleep (keep clock at full speed)
 	    TIMx->CR1 |= TIM_CR1_CEN;		// enable timer peripheral
 	    TIMx->EGR |= TIM_EGR_UG;		// start pwm
 	}
@@ -89,7 +89,7 @@ static void pwm_set_gpio (unsigned int gpio, bool enable, bool pulse, unsigned i
 	TIMx->CR1 &= ~TIM_CR1_CEN;		// disable timer
 	TIMx->DIER &= ~TIM_DIER_UIE;		// disable update interrupt
 	TIMx_disable();				// disable peripheral clock
-	hal_enableSleep(HAL_SLEEP_MEDIUM);	// re-enable sleep
+        hal_clearMaxSleep(HAL_SLEEP_S0);        // re-enable sleep
 	NVIC_DisableIRQ(TIMx_IRQn);		// disable interrupt in NVIC
     }
 
@@ -118,7 +118,7 @@ void leds_pwm (unsigned int gpio, int dc) {
 
 void leds_pulse (unsigned int gpio, unsigned int min, unsigned int max, int step, unsigned int delay) {
 #if defined(BRD_LED_TIM)
-    unsigned int ch = BRD_GPIO_PWM_GET_CHAN(gpio) - 1;
+    unsigned int ch = BRD_GPIO_GET_CHAN(gpio) - 1;
     ASSERT(ch < 4);
     pwm.pulse[ch].n = 0;
     pwm.pulse[ch].min = min;

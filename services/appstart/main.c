@@ -7,6 +7,10 @@
 
 #include "svcdefs.h"
 
+#ifdef SVC_backtrace
+#include "backtrace/backtrace.h"
+#endif
+
 static void initfunc (osjob_t* job) {
 #if defined(CFG_DEBUG) && CFG_DEBUG != 0
     unsigned char eui[8];
@@ -26,6 +30,10 @@ static void initfunc (osjob_t* job) {
 	    (BOOT_DEVINFO->bootmode == TABS_BOOT_FLIGHT) ? "flight" :
 #endif
 	    "normal");
+#endif
+
+#ifdef SVC_backtrace
+    bt_print();
 #endif
 
     // Application start hook

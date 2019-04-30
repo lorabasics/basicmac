@@ -182,7 +182,10 @@ int gpio_transition (int port, int pin, int type, int duration, unsigned int con
 //////////////////////////////////////////////////////////////////////
 
 #define VREFINT_CAL_ADDR ((u2_t*) (0x1FF80078U))
+#define TEMP130_CAL_ADDR ((uint16_t*) ((uint32_t) 0x1FF8007E))
+#define TEMP30_CAL_ADDR  ((uint16_t*) ((uint32_t) 0x1FF8007A))
 #define VREFINT_ADC_CH       17
+#define TEMPINT_ADC_CH       18
 u2_t adc_read (u1_t chnl);
 
 
@@ -191,6 +194,12 @@ u2_t adc_read (u1_t chnl);
 //////////////////////////////////////////////////////////////////////
 
 #define PERIPH_CRC
+
+//////////////////////////////////////////////////////////////////////
+// SHA engine (software, via bootloader)
+//////////////////////////////////////////////////////////////////////
+
+#define PERIPH_SHA256
 
 
 //////////////////////////////////////////////////////////////////////
@@ -330,6 +339,15 @@ typedef struct {
 void ir_burst (unsigned int psc, ir_bpseq* seqs, int nseqs, osjobcb_t cb);
 
 void ir_tim_irq (void);
+#endif
+
+
+//////////////////////////////////////////////////////////////////////
+// TRNG (if available)
+//////////////////////////////////////////////////////////////////////
+
+#if defined(STM32L072xx)
+#define PERIPH_TRNG
 #endif
 
 

@@ -13,7 +13,7 @@ FAMILIES	:= $(subst -, ,$(TARGET))
 # ------------------------------------------------
 # Families
 
--include $(wildcard ../fam-*.mk)
+-include $(wildcard $(TOPDIR)/projects/fam-*.mk)
 
 
 # ------------------------------------------------
@@ -23,8 +23,8 @@ ifeq ($(MCU:stm32%=stm32),stm32)
     TOOLCHAIN	:= gcc
     CROSS_COMPILE:=arm-none-eabi-
     CFLAGS	+= -fno-common -fno-builtin -fno-exceptions -ffunction-sections -fdata-sections -fomit-frame-pointer
-    HALDIR	:= ../../stm32
-    CMSIS	:= ../../stm32/CMSIS
+    HALDIR	:= $(TOPDIR)/stm32
+    CMSIS	:= $(TOPDIR)/stm32/CMSIS
     CFLAGS	+= -I$(CMSIS)/Include
     CFLAGS	+= -I$(BL)/src/common
     CFLAGS	+= -I$(BL)/src/arm/stm32lx
@@ -46,13 +46,14 @@ ifeq ($(MCU),stm32l1)
     OBJS_BLACKLIST += i2c.o adc.o # these do not build yet for L1
 endif
     ALL		+= $(BUILDDIR)/$(PROJECT).hex
+    ALL		+= $(BUILDDIR)/$(PROJECT).zfw
     LOAD	 = loadhex
 endif
 
 ifeq ($(MCU),unicorn)
     TOOLCHAIN	:= gcc
     CROSS_COMPILE:=arm-none-eabi-
-    HALDIR	:= ../../unicorn
+    HALDIR	:= $(TOPDIR)/unicorn
     FLAGS	+= -mcpu=cortex-m0plus -mthumb
     CFLAGS	+= -fno-common -fno-builtin -fno-exceptions -ffunction-sections -fdata-sections -fomit-frame-pointer
     CFLAGS	+= -I$(BL)/src/common
@@ -70,16 +71,17 @@ endif
 # ------------------------------------------------
 # Build tools
 
-BL ?= ../../basicloader
+BL ?= $(TOPDIR)/basicloader
 BL_BRD ?= $(error "No basic loader board set")
 
-ifneq (ok,$(shell python -c 'import sys; print("ok" if sys.hexversion >= 0x03060000 else "")'))
+ifneq (ok,$(shell python3 -c 'import sys; print("ok" if sys.hexversion >= 0x03060000 else "")'))
     $(error "Python 3.6 or newer required")
 endif
 
-SVCTOOL = python $(TOOLSDIR)/svctool/svctool.py
+SVCTOOL = $(TOOLSDIR)/svctool/svctool.py
 
 FWTOOL = $(BL)/tools/fwtool/fwtool.py
+ZFWTOOL = $(BL)/tools/fwtool/zfwtool.py
 
 
 # ------------------------------------------------

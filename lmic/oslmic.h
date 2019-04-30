@@ -8,7 +8,9 @@
 #ifndef _oslmic_h_
 #define _oslmic_h_
 
+#if !defined(CFG_simul)
 #include "board.h"
+#endif // !defined(CFG_simul)
 
 // Dependencies required for the LoRa MAC in C to run.
 // These settings can be adapted to the underlying system.
@@ -35,8 +37,6 @@ typedef const char*	str_t;
 #if !defined(CFG_simul)
 #include "debug.h"
 #endif
-#define EV(a,b,c) /**/
-#define DO_DEVDB(field1,field2) /**/
 #if !defined(CFG_noassert)
 #if defined(CFG_simul) && defined(CFG_DEBUG)
 #include <stdio.h>
@@ -56,21 +56,6 @@ typedef const char*	str_t;
 #define os_clearMem(a,b)   memset(a,0,b)
 #define os_copyMem(a,b,c)  memcpy(a,b,c)
 #define os_moveMem(a,b,c)  memmove(a,b,c)
-
-typedef     struct osjob_t osjob_t;
-typedef      struct band_t band_t;
-typedef   struct chnldef_t chnldef_t;
-typedef   struct rxsched_t rxsched_t;
-typedef   struct bcninfo_t bcninfo_t;
-typedef        const u1_t* xref2cu1_t;
-typedef              u1_t* xref2u1_t;
-#define TYPEDEF_xref2rps_t     typedef         rps_t* xref2rps_t
-#define TYPEDEF_xref2rxsched_t typedef     rxsched_t* xref2rxsched_t
-#define TYPEDEF_xref2chnldef_t typedef     chnldef_t* xref2chnldef_t
-#define TYPEDEF_xref2band_t    typedef        band_t* xref2band_t
-#define TYPEDEF_xref2osjob_t   typedef       osjob_t* xref2osjob_t
-
-#define SIZEOFEXPR(x) sizeof(x)
 
 #define ON_LMIC_EVENT(ev)  onLmicEvent(ev)
 #define DECL_ON_LMIC_EVENT void onLmicEvent(ev_t e)
@@ -107,6 +92,17 @@ extern u4_t AESKEY[];
 #endif
 #endif //defined(CFG_budha)
 
+#if defined(CFG_dse)
+#if defined(CFG_simul)
+#define DEFINE_DSE
+#define DECLARE_DSE extern struct dse_t* pdse
+#define DSE (*(pdse))
+#else
+#define DEFINE_DSE  struct dse_t DSE
+#define DECLARE_DSE extern struct dse_t DSE
+#endif
+#endif //defined(CFG_dse)
+
 #if defined(CFG_simul)
 #define DEFINE_APP(t)
 #define DECLARE_APP(t) extern void* pappdata
@@ -141,7 +137,7 @@ u1_t os_getRndU1 (void);
 #if defined(BRD_sx1261_radio) || defined(BRD_sx1262_radio)
 #define RX_RAMPUP  (us2osticks(5000))
 #elif defined(BRD_sx1272_radio) || defined(BRD_sx1276_radio)
-#define RX_RAMPUP  (us2osticks(1200))
+#define RX_RAMPUP  (us2osticksCeil(1475))
 #else
 #define RX_RAMPUP  (0)
 #endif
@@ -166,6 +162,9 @@ u1_t os_getRndU1 (void);
 typedef s4_t  ostime_t;
 typedef s8_t  osxtime_t;
 
+#define OSXTIME_MAX	INT64_MAX
+#define OSTIME_MAX_DIFF ((1U << 31) - 1)
+
 #if !HAS_ostick_conv
 #define us2osticks(us)   ((ostime_t)( ((s8_t)(us) * OSTICKS_PER_SEC) / 1000000))
 #define ms2osticks(ms)   ((ostime_t)( ((s8_t)(ms) * OSTICKS_PER_SEC)    / 1000))
@@ -184,9 +183,9 @@ typedef s8_t  osxtime_t;
 #define sec2osxticks(sec) ((osxtime_t)( (s8_t)(sec) * OSTICKS_PER_SEC))
 #endif
 
-struct osjob_t;  // fwd decl.
+struct osjob_t; // fwd decl
 typedef void (*osjobcb_t) (struct osjob_t*);
-struct osjob_t {
+typedef struct osjob_t {
     struct osjob_t* next;
     ostime_t deadline;
     osjobcb_t  func;
@@ -195,34 +194,49 @@ struct osjob_t {
     void* ctx;
     int pqidx;
 #endif
+} osjob_t;
+
+// extended os job wrapper for future events exceeding max range of ostime_t
+typedef struct osxjob_t osxjob_t;
+struct osxjob_t {
+    osjob_t job;
+    osxtime_t deadline;
+    osjobcb_t func;
 };
-TYPEDEF_xref2osjob_t;
 
 #ifndef HAS_os_calls
 
 #ifndef os_getNwkKey
-void os_getNwkKey (xref2u1_t buf);
+void os_getNwkKey (u1_t* buf);
 #endif
 #ifndef os_getAppKey
-void os_getAppKey (xref2u1_t buf);
+void os_getAppKey (u1_t* buf);
 #endif
 #ifndef os_getJoinEui
-void os_getJoinEui (xref2u1_t buf);
+void os_getJoinEui (u1_t* buf);
 #endif
 #ifndef os_getDevEui
-void os_getDevEui (xref2u1_t buf);
+void os_getDevEui (u1_t* buf);
 #endif
-#ifndef os_setCallback
-void os_setCallback (xref2osjob_t job, osjobcb_t cb);
+#ifndef os_getRegion
+u1_t os_getRegion (void);
 #endif
-#ifndef os_setTimedCallback
-void os_setTimedCallback (xref2osjob_t job, ostime_t time, osjobcb_t cb);
-#endif
-#ifndef os_setApproxTimedCallback
-void os_setApproxTimedCallback (xref2osjob_t job, ostime_t time, osjobcb_t cb);
+#ifndef os_setTimedCallbackEx
+enum {
+    OSJOB_FLAG_APPROX      = (1 << 0), // actual time of job may be approximate
+    OSJOB_FLAG_IRQDISABLED = (1 << 1), // IRQs will be disabled when job is run -- THE JOB MUST RE-ENABLE IRQs BY CALLING hal_enableIRQs() !!!
+    OSJOB_FLAG_NOW         = (1 << 2), // job is immediately runnable (time parameter is ignored)
+};
+void os_setTimedCallbackEx (osjob_t* job, ostime_t time, osjobcb_t cb, unsigned int flags);
+void os_setExtendedTimedCallback (osxjob_t* xjob, osxtime_t xtime, osjobcb_t cb);
+// convenience functions (implemented as macros)
+#define os_setCallback(job, cb) os_setTimedCallbackEx(job, 0, cb, OSJOB_FLAG_NOW)
+#define os_setTimedCallback(job, time, cb) os_setTimedCallbackEx(job, time, cb, 0)
+#define os_setApproxTimedCallback(job, time, cb) os_setTimedCallbackEx(job, time, cb, OSJOB_FLAG_APPROX)
+#define os_setProtectedTimedCallback(job, time, cb) os_setTimedCallbackEx(job, time, cb, OSJOB_FLAG_IRQDISABLED)
 #endif
 #ifndef os_clearCallback
-int os_clearCallback (xref2osjob_t job);
+int os_clearCallback (osjob_t* job);
 #endif
 #ifndef os_getTime
 ostime_t os_getTime (void);
@@ -239,43 +253,37 @@ uint os_getTimeSecs (void);
 #ifndef os_radio
 void os_radio (u1_t mode);
 #endif
-#ifndef os_cca
-bit_t os_cca (u2_t rps, u4_t freq);
-#endif
 #ifndef os_getBattLevel
 u1_t os_getBattLevel (void);
-#endif
-#ifndef os_getRegion
-u4_t os_getRegion (void);
 #endif
 
 #ifndef os_rlsbf4
 //! Read 32-bit quantity from given pointer in little endian byte order.
-u4_t os_rlsbf4 (xref2cu1_t buf);
+u4_t os_rlsbf4 (const u1_t* buf);
 #endif
 #ifndef os_wlsbf4
 //! Write 32-bit quntity into buffer in little endian byte order.
-void os_wlsbf4 (xref2u1_t buf, u4_t value);
+void os_wlsbf4 (u1_t* buf, u4_t value);
 #endif
 #ifndef os_rmsbf4
 //! Read 32-bit quantity from given pointer in big endian byte order.
-u4_t os_rmsbf4 (xref2cu1_t buf);
+u4_t os_rmsbf4 (const u1_t* buf);
 #endif
 #ifndef os_wmsbf4
 //! Write 32-bit quntity into buffer in big endian byte order.
-void os_wmsbf4 (xref2u1_t buf, u4_t value);
+void os_wmsbf4 (u1_t* buf, u4_t value);
 #endif
 #ifndef os_rlsbf2
 //! Read 16-bit quantity from given pointer in little endian byte order.
-u2_t os_rlsbf2 (xref2cu1_t buf);
+u2_t os_rlsbf2 (const u1_t* buf);
 #endif
 #ifndef os_wlsbf2
 //! Write 16-bit quntity into buffer in little endian byte order.
-void os_wlsbf2 (xref2u1_t buf, u2_t value);
+void os_wlsbf2 (u1_t* buf, u2_t value);
 #endif
 #ifndef os_wlsbf3
 //! Write 24-bit quntity into buffer in little endian byte order.
-void os_wlsbf3 (xref2u1_t buf, u4_t value);
+void os_wlsbf3 (u1_t* buf, u4_t value);
 #endif
 
 //! Get random number (default impl for u2_t).
@@ -283,7 +291,7 @@ void os_wlsbf3 (xref2u1_t buf, u4_t value);
 #define os_getRndU2() ((u2_t)((os_getRndU1()<<8)|os_getRndU1()))
 #endif
 #ifndef os_crc16
-u2_t os_crc16 (xref2u1_t d, uint len);
+u2_t os_crc16 (u1_t* d, uint len);
 #endif
 
 #if defined(CFG_budha)
@@ -303,36 +311,25 @@ s2_t  os_fwChunk(u1_t* p, u1_t len);
 #endif // !HAS_os_calls
 
 // public radio functions
-void radio_irq_handler (u1_t dio); // (used by EXTI_IRQHandler)
+void radio_irq_handler (u1_t dio, ostime_t ticks); // (used by EXTI_IRQHandler)
 void radio_init (void); // (used by os_init(),
 void radio_reset (void); // (used by uft, radio_init())
-void radio_writeBuf (u1_t addr, xref2u1_t buf, u1_t len); // (used by perso)
-void radio_readBuf (u1_t addr, xref2u1_t buf, u1_t len); // (used by perso)
+void radio_writeBuf (u1_t addr, u1_t* buf, u1_t len); // (used by perso)
+void radio_readBuf (u1_t addr, u1_t* buf, u1_t len); // (used by perso)
+void radio_set_irq_timeout (ostime_t timeout);
 
 // radio-specific functions
-void radio_irq_process (ostime_t irqtime);
+bool radio_irq_process (ostime_t irqtime, u1_t diomask);
 void radio_starttx (bool txcontinuous);
 void radio_startrx (bool rxcontinuous);
 void radio_sleep (void);
+void radio_cca (void);
 
-// ======================================================================
-// AES support
-// !!Keep in sync with lorabase.hpp!!
-// !!Keep in sync with bootloader/aes.c!!
-
-#ifndef AES_ENC  // if AES_ENC is defined as macro all other values must be too
-#define AES_ENC       0x00
-#define AES_DEC       0x01
-#define AES_MIC       0x02
-#define AES_CTR       0x04
-#define AES_MICNOAUX  0x08
-#endif
-#ifndef AESkey  // if AESkey is defined as macro all other values must be too
-extern xref2u1_t AESkey;
-extern xref2u1_t AESaux;
-#endif
-#ifndef os_aes
-u4_t os_aes (u1_t mode, xref2u1_t buf, u2_t len);
+// adjust by antenna gain for effective radiated power
+#if defined(CFG_tx_erp_adj) && defined(CFG_eu868)
+#define TX_ERP_ADJ	(CFG_tx_erp_adj)
+#else
+#define TX_ERP_ADJ	0
 #endif
 
 #endif // _oslmic_h_

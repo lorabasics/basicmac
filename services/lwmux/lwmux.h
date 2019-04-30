@@ -47,6 +47,8 @@ void lwm_setpriority (unsigned int priority);
 void lwm_request_send (lwm_job* job, unsigned int priority, lwm_tx txfunc);
 void lwm_clear_send (lwm_job* job);
 
+void lwm_setadrprofile (const unsigned char* drlist, int n);
+
 #ifdef LWM_SLOTTED
 void lwm_slotparams (u4_t freq, dr_t dr, ostime_t interval, int slotsz, int missed_max, int timeouts_max);
 

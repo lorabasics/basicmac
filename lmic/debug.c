@@ -157,7 +157,7 @@ static int debug_vsnprintf(char *str, int size, const char *format, va_list arg)
 		numeric: {
 			char num[33], pad = ' ';
 			if(zero && left==0 && prec==0) {
-			    prec = width - 1; // have itoa() do the leading zero-padding for correct placement of sign 
+			    prec = width - 1; // have itoa() do the leading zero-padding for correct placement of sign
 			    pad = '0';
 			}
 			int len = itoa(num, va_arg(arg, int), base, prec, 0, 0, sign);
@@ -185,6 +185,34 @@ static int debug_vsnprintf(char *str, int size, const char *format, va_list arg)
 			    btoa(dst, eui[i]);
 			    dst += 2;
 			    if(i) *dst++ = '-';
+			}
+		    }
+		    break;
+		case 't': // ostime_t  (hh:mm:ss.mmm, no field padding)
+		case 'T': // osxtime_t (ddd.hh:mm:ss, no field padding)
+		    if (end - dst >= 12) {
+			uint64_t t = ((c == 'T') ? va_arg(arg, uint64_t) : va_arg(arg, uint32_t)) * 1000 / OSTICKS_PER_SEC;
+			int ms = t % 1000;
+			t /= 1000;
+			int sec = t % 60;
+			t /= 60;
+			int min = t % 60;
+			t /= 60;
+			int hr = t % 24;
+			t /= 24;
+			int day = t;
+			if (c == 'T') {
+			    dst += itoa(dst, day, 10, 3, 0, 0, 0);
+			    *dst++ = '.';
+			}
+			dst += itoa(dst, hr, 10, 2, 0, 0, 0);
+			*dst++ = ':';
+			dst += itoa(dst, min, 10, 2, 0, 0, 0);
+			*dst++ = ':';
+			dst += itoa(dst, sec, 10, 2, 0, 0, 0);
+			if (c == 't') {
+			    *dst++ = '.';
+			    dst += itoa(dst, ms, 10, 3, 0, 0, 0);
 			}
 		    }
 		    break;
