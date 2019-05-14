@@ -1,0 +1,12 @@
+version: "3"
+services:
+  basicmac:
+    privileged: true
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/basicmac
+      - /dev/bus/usb:/dev/bus/usb
+      - /dev/ttyACM0:/dev/ttyACM0
+
